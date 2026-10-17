@@ -1,4 +1,4 @@
-name: Auto Generate Project and Build APK
+name: Build L2TP APK Fixed
 
 on:
   push:
@@ -15,390 +15,98 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Gradle 8.2
+      - name: Setup Gradle 8.4
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.2'
+          gradle-version: '8.4'
 
-      - name: Generate Full Source Code & ZIP
+      - name: Create Android Project Files
         run: |
-          python3 - << 'EOF'
-          import os, zipfile
+          mkdir -p app/src/main/java/com/privatevpn/l2tp
+          mkdir -p app/src/main/res/layout
+          mkdir -p output_bundle
 
-          files = {
-              "settings.gradle": """pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          rootProject.name = "MyPrivateL2TP"
-          include ':app'
-          """,
+          printf '%s\n' \
+            'pluginManagement {' \
+            '    repositories { google(); mavenCentral(); gradlePluginPortal() }' \
+            '}' \
+            'dependencyResolutionManagement {' \
+            '    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)' \
+            '    repositories { google(); mavenCentral() }' \
+            '}' \
+            'rootProject.name = "MyPrivateL2TP"' \
+            'include ":app"' > settings.gradle
 
-              "build.gradle": """plugins {
-              id 'com.android.application' version '8.1.2' apply false
-              id 'org.jetbrains.kotlin.android' version '1.9.10' apply false
-          }
-          """,
+          printf '%s\n' \
+            'plugins {' \
+            '    id "com.android.application" version "8.2.0" apply false' \
+            '    id "org.jetbrains.kotlin.android" version "1.9.20" apply false' \
+            '}' > build.gradle
 
-              "gradle.properties": """org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          kotlin.code.style=official
-          android.nonTransitiveRClass=true
-          """,
+          printf '%s\n' \
+            'org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8' \
+            'android.useAndroidX=true' \
+            'android.nonTransitiveRClass=true' > gradle.properties
 
-              "app/build.gradle": """plugins {
-              id 'com.android.application'
-              id 'org.jetbrains.kotlin.android'
-          }
+          printf '%s\n' \
+            'plugins {' \
+            '    id "com.android.application"' \
+            '    id "org.jetbrains.kotlin.android"' \
+            '}' \
+            'android {' \
+            '    namespace "com.privatevpn.l2tp"' \
+            '    compileSdk 34' \
+            '    defaultConfig {' \
+            '        applicationId "com.privatevpn.l2tp"' \
+            '        minSdk 24' \
+            '        targetSdk 34' \
+            '        versionCode 1' \
+            '        versionName "1.0"' \
+            '    }' \
+            '    compileOptions {' \
+            '        sourceCompatibility JavaVersion.VERSION_17' \
+            '        targetCompatibility JavaVersion.VERSION_17' \
+            '    }' \
+            '    kotlinOptions { jvmTarget = "17" }' \
+            '}' \
+            'dependencies {' \
+            '    implementation "androidx.core:core-ktx:1.12.0"' \
+            '    implementation "androidx.appcompat:appcompat:1.6.1"' \
+            '    implementation "com.google.android.material:material:1.11.0"' \
+            '}' > app/build.gradle
 
-          android {
-              namespace 'com.privatevpn.l2tp'
-              compileSdk 34
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="utf-8"?>' \
+            '<manifest xmlns:android="http://schemas.android.com/apk/res/android">' \
+            '    <uses-permission android:name="android.permission.INTERNET" />' \
+            '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' \
+            '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />' \
+            '    <application' \
+            '        android:allowBackup="false"' \
+            '        android:label="Private L2TP VPN"' \
+            '        android:supportsRtl="true"' \
+            '        android:theme="@style/Theme.AppCompat.Light.DarkActionBar">' \
+            '        <activity android:name=".MainActivity" android:exported="true">' \
+            '            <intent-filter>' \
+            '                <action android:name="android.intent.action.MAIN" />' \
+            '                <category android:name="android.intent.category.LAUNCHER" />' \
+            '            </intent-filter>' \
+            '        </activity>' \
+            '        <service android:name=".L2tpVpnService" android:exported="false" android:permission="android.permission.BIND_VPN_SERVICE">' \
+            '            <intent-filter><action android:name="android.net.VpnService" /></intent-filter>' \
+            '        </service>' \
+            '    </application>' \
+            '</manifest>' > app/src/main/AndroidManifest.xml
 
-              defaultConfig {
-                  applicationId "com.privatevpn.l2tp"
-                  minSdk 24
-                  targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
-              }
-
-              buildTypes {
-                  release {
-                      minifyEnabled false
-                  }
-              }
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-              kotlinOptions {
-                  jvmTarget = '17'
-              }
-          }
-
-          dependencies {
-              implementation 'androidx.core:core-ktx:1.12.0'
-              implementation 'androidx.appcompat:appcompat:1.6.1'
-              implementation 'com.google.android.material:material:1.11.0'
-          }
-          """,
-
-              "app/src/main/AndroidManifest.xml": """<?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-              <uses-permission android:name="android.permission.INTERNET" />
-              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-              <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
-              <application
-                  android:allowBackup="false"
-                  android:label="Private L2TP VPN"
-                  android:supportsRtl="true"
-                  android:theme="@style/Theme.MaterialComponents.DayNight.DarkActionBar">
-
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:windowSoftInputMode="adjustResize">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN" />
-                          <category android:name="android.intent.category.LAUNCHER" />
-                      </intent-filter>
-                  </activity>
-
-                  <service
-                      android:name=".L2tpVpnService"
-                      android:exported="false"
-                      android:foregroundServiceType="specialUse"
-                      android:permission="android.permission.BIND_VPN_SERVICE">
-                      <intent-filter>
-                          <action android:name="android.net.VpnService" />
-                      </intent-filter>
-                      <property
-                          android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                          android:value="vpn" />
-                  </service>
-
-              </application>
-
-          </manifest>
-          """,
-
-              "app/src/main/res/layout/activity_main.xml": """<?xml version="1.0" encoding="utf-8"?>
-          <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-              android:layout_width="match_parent"
-              android:layout_height="match_parent"
-              android:background="#F5F7FA"
-              android:layoutDirection="rtl"
-              android:padding="20dp">
-
-              <LinearLayout
-                  android:layout_width="match_parent"
-                  android:layout_height="wrap_content"
-                  android:orientation="vertical">
-
-                  <TextView
-                      android:layout_width="match_parent"
-                      android:layout_height="wrap_content"
-                      android:text="کلاینت اختصاصی L2TP VPN"
-                      android:textSize="22sp"
-                      android:textStyle="bold"
-                      android:textColor="#1A202C"
-                      android:gravity="center"
-                      android:layout_marginBottom="20dp" />
-
-                  <EditText
-                      android:id="@+id/etServer"
-                      android:layout_width="match_parent"
-                      android:layout_height="52dp"
-                      android:background="@android:drawable/edit_text"
-                      android:hint="آدرس سرور (Server IP / Host)"
-                      android:inputType="textUri"
-                      android:padding="12dp" />
-
-                  <EditText
-                      android:id="@+id/etUsername"
-                      android:layout_width="match_parent"
-                      android:layout_height="52dp"
-                      android:layout_marginTop="10dp"
-                      android:background="@android:drawable/edit_text"
-                      android:hint="نام کاربری (Username)"
-                      android:inputType="text"
-                      android:padding="12dp" />
-
-                  <EditText
-                      android:id="@+id/etPassword"
-                      android:layout_width="match_parent"
-                      android:layout_height="52dp"
-                      android:layout_marginTop="10dp"
-                      android:background="@android:drawable/edit_text"
-                      android:hint="رمز عبور (Password)"
-                      android:inputType="textPassword"
-                      android:padding="12dp" />
-
-                  <EditText
-                      android:id="@+id/etPsk"
-                      android:layout_width="match_parent"
-                      android:layout_height="52dp"
-                      android:layout_marginTop="10dp"
-                      android:background="@android:drawable/edit_text"
-                      android:hint="کلید مشترک (IPSec PSK - اختیاری)"
-                      android:inputType="textPassword"
-                      android:padding="12dp" />
-
-                  <EditText
-                      android:id="@+id/etSecret"
-                      android:layout_width="match_parent"
-                      android:layout_height="52dp"
-                      android:layout_marginTop="10dp"
-                      android:background="@android:drawable/edit_text"
-                      android:hint="رمز تونل (L2TP Secret - اختیاری)"
-                      android:inputType="textPassword"
-                      android:padding="12dp" />
-
-                  <Button
-                      android:id="@+id/btnConnect"
-                      android:layout_width="match_parent"
-                      android:layout_height="58dp"
-                      android:layout_marginTop="20dp"
-                      android:text="اتصال (Connect)"
-                      android:textSize="17sp"
-                      android:textStyle="bold" />
-
-                  <LinearLayout
-                      android:layout_width="match_parent"
-                      android:layout_height="wrap_content"
-                      android:layout_marginTop="24dp"
-                      android:background="#FFFFFF"
-                      android:elevation="2dp"
-                      android:orientation="vertical"
-                      android:padding="16dp">
-
-                      <TextView
-                          android:id="@+id/tvStatus"
-                          android:layout_width="match_parent"
-                          android:layout_height="wrap_content"
-                          android:gravity="center"
-                          android:text="وضعیت: قطع (Disconnected)"
-                          android:textColor="#E53E3E"
-                          android:textSize="18sp"
-                          android:textStyle="bold" />
-
-                      <TextView
-                          android:id="@+id/tvTimer"
-                          android:layout_width="match_parent"
-                          android:layout_height="wrap_content"
-                          android:layout_marginTop="8dp"
-                          android:gravity="center"
-                          android:text="مدت اتصال: 00:00:00"
-                          android:textColor="#4A5568"
-                          android:textSize="15sp" />
-
-                      <View
-                          android:layout_width="match_parent"
-                          android:layout_height="1dp"
-                          android:layout_marginVertical="12dp"
-                          android:background="#E2E8F0" />
-
-                      <TextView
-                          android:id="@+id/tvDownload"
-                          android:layout_width="match_parent"
-                          android:layout_height="wrap_content"
-                          android:text="⬇ دریافتی (Download): 0 KB (0 KB/s)"
-                          android:textColor="#2B6CB0"
-                          android:textSize="15sp"
-                          android:textStyle="bold" />
-
-                      <TextView
-                          android:id="@+id/tvUpload"
-                          android:layout_width="match_parent"
-                          android:layout_height="wrap_content"
-                          android:layout_marginTop="8dp"
-                          android:text="⬆ ارسالی (Upload): 0 KB (0 KB/s)"
-                          android:textColor="#2F855A"
-                          android:textSize="15sp"
-                          android:textStyle="bold" />
-
-                  </LinearLayout>
-
-              </LinearLayout>
-          </ScrollView>
-          """,
-
-              "app/src/main/java/com/privatevpn/l2tp/MainActivity.kt": """package com.privatevpn.l2tp
-
-          import android.app.Activity
-          import android.content.BroadcastReceiver
-          import android.content.Context
-          import android.content.Intent
-          import android.content.IntentFilter
-          import android.graphics.Color
-          import android.net.TrafficStats
-          import android.net.VpnService
-          import android.os.Build
-          import android.os.Bundle
-          import android.os.Handler
-          import android.os.Looper
-          import android.widget.Button
-          import android.widget.EditText
-          import android.widget.TextView
-          import android.widget.Toast
-          import androidx.appcompat.app.AppCompatActivity
-          import java.util.Locale
-
-          class MainActivity : AppCompatActivity() {
-
-              private lateinit var etServer: EditText
-              private lateinit var etUsername: EditText
-              private lateinit var etPassword: EditText
-              private lateinit var etPsk: EditText
-              private lateinit var etSecret: EditText
-              private lateinit var btnConnect: Button
-              private lateinit var tvStatus: TextView
-              private lateinit var tvTimer: TextView
-              private lateinit var tvDownload: TextView
-              private lateinit var tvUpload: TextView
-
-              private var isConnected = false
-              private var baseRxBytes = 0L
-              private var baseTxBytes = 0L
-              private var lastRxBytes = 0L
-              private var lastTxBytes = 0L
-              private var connectTimestamp = 0L
-
-              private val handler = Handler(Looper.getMainLooper())
-              private val statsUpdater = object : Runnable {
-                  override fun run() {
-                      if (isConnected) {
-                          val nowRx = TrafficStats.getTotalRxBytes()
-                          val nowTx = TrafficStats.getTotalTxBytes()
-
-                          val totalRx = (nowRx - baseRxBytes).coerceAtLeast(0L)
-                          val totalTx = (nowTx - baseTxBytes).coerceAtLeast(0L)
-
-                          val speedRx = (nowRx - lastRxBytes).coerceAtLeast(0L)
-                          val speedTx = (nowTx - lastTxBytes).coerceAtLeast(0L)
-
-                          lastRxBytes = nowRx
-                          lastTxBytes = nowTx
-
-                          val elapsedSec = (System.currentTimeMillis() - connectTimestamp) / 1000
-                          val hours = elapsedSec / 3600
-                          val minutes = (elapsedSec % 3600) / 60
-                          val seconds = elapsedSec % 60
-
-                          tvTimer.text = String.format(Locale.US, "مدت اتصال: %02d:%02d:%02d", hours, minutes, seconds)
-                          tvDownload.text = "⬇ دریافتی: ${formatSize(totalRx)} (${formatSize(speedRx)}/s)"
-                          tvUpload.text = "⬆ ارسالی: ${formatSize(totalTx)} (${formatSize(speedTx)}/s)"
-
-                          handler.postDelayed(this, 1000)
-                      }
-                  }
-              }
-
-              private val vpnStateReceiver = object : BroadcastReceiver() {
-                  override fun onReceive(context: Context?, intent: Intent?) {
-                      val state = intent?.getStringExtra("STATE") ?: return
-                      val msg = intent.getStringExtra("MESSAGE") ?: ""
-                      updateUiState(state, msg)
-                  }
-              }
-
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-                  setContentView(R.layout.activity_main)
-
-                  etServer = findViewById(R.id.etServer)
-                  etUsername = findViewById(R.id.etUsername)
-                  etPassword = findViewById(R.id.etPassword)
-                  etPsk = findViewById(R.id.etPsk)
-                  etSecret = findViewById(R.id.etSecret)
-                  btnConnect = findViewById(R.id.btnConnect)
-                  tvStatus = findViewById(R.id.tvStatus)
-                  tvTimer = findViewById(R.id.tvTimer)
-                  tvDownload = findViewById(R.id.tvDownload)
-                  tvUpload = findViewById(R.id.tvUpload)
-
-                  loadSavedCredentials()
-
-                  btnConnect.setOnClickListener {
-                      if (isConnected) {
-                          stopVpnService()
-                      } else {
-                          val server = etServer.text.toString().trim()
-                          val user = etUsername.text.toString().trim()
-                          val pass = etPassword.text.toString()
-
-                          if (server.isEmpty() || user.isEmpty() || pass.isEmpty()) {
-                              Toast.makeText(this, "لطفاً آدرس سرور، نام کاربری و رمز عبور را وارد کنید", Toast.LENGTH_SHORT).show()
-                              return@setOnClickListener
-                          }
-
-                          saveCredentials()
-                          val prepareIntent = VpnService.prepare(this)
-                          if (prepareIntent != null) {
-                              startActivityForResult(prepareIntent, 101)
-                          } else {
-                              startVpnService()
-                          }
-                      }
-                  }
-              }
-
-              private fun updateUiState(state: String, message: String) {
-                  when (state) {
-                      "CONNECTING" -> {
-                          tvStatus.text = "وضعیت: در حال اتصال به سرور
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="utf-8"?>' \
+            '<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:padding="20dp" android:layoutDirection="rtl">' \
+            '    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">' \
+            '        <EditText android:id="@+id/etServer" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Server IP / Host" android:inputType="textUri" />' \
+            '        <EditText android:id="@+id/etUsername" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="Username" android:inputType="text" />' \
+            '        <EditText android:id="@+id/etPassword" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="Password" android:inputType="textPassword" />' \
+            '        <EditText android:id="@+id/etPsk" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="IPSec PSK (Optional)" android:inputType="textPassword" />' \
+            '        <Button android:id="@+id/btnConnect" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="16dp" android:text="Connect / اتصال" />' \
+            '        <TextView android:id="@+id/tvStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:gravity="center" android:text="Status: Disconnected" android:textSize="18sp" android:textStyle="bold" />' \
+            '        <TextView android:id="@+id/tvTimer" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center" android:text="00:00:00" android:textSize="16sp" />' \
+            '        <TextView android:id="@+id/tvDownload" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop
