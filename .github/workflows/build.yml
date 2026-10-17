@@ -1,4 +1,4 @@
-name: Build L2TP APK Fixed
+name: Build L2TP APK Guaranteed
 
 on:
   push:
@@ -20,93 +20,26 @@ jobs:
         with:
           gradle-version: '8.4'
 
-      - name: Create Android Project Files
+      - name: Decode Project Files
         run: |
           mkdir -p app/src/main/java/com/privatevpn/l2tp
           mkdir -p app/src/main/res/layout
           mkdir -p output_bundle
 
-          printf '%s\n' \
-            'pluginManagement {' \
-            '    repositories { google(); mavenCentral(); gradlePluginPortal() }' \
-            '}' \
-            'dependencyResolutionManagement {' \
-            '    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)' \
-            '    repositories { google(); mavenCentral() }' \
-            '}' \
-            'rootProject.name = "MyPrivateL2TP"' \
-            'include ":app"' > settings.gradle
+          echo "cGx1Z2luTWFuYWdlbWVudCB7CiAgICByZXBvc2l0b3JpZXMgeyBnb29nbGUoKTsgbWF2ZW5DZW50cmFsKCk7IGdyYWRsZVBsdWdpblBvcnRhbCgpIH0KfQpkZXBlbmRlbmN5UmVzb2x1dGlvbk1hbmFnZW1lbnQgewogICAgcmVwb3NpdG9yaWVzTW9kZS5zZXQoUmVwb3NpdG9yaWVzTW9kZS5GQUlMX09OX1BST0pFQ1RfUkVQT1MpCiAgICByZXBvc2l0b3JpZXMgeyBnb29nbGUoKTsgbWF2ZW5DZW50cmFsKCkgfQp9CnJvb3RQcm9qZWN0Lm5hbWUgPSAiTXlQcml2YXRlTDJUUCgKaW5jbHVkZSAiOmFwcCIK" | base64 -d > settings.gradle
 
-          printf '%s\n' \
-            'plugins {' \
-            '    id "com.android.application" version "8.2.0" apply false' \
-            '    id "org.jetbrains.kotlin.android" version "1.9.20" apply false' \
-            '}' > build.gradle
+          sed -i 's/MyPrivateL2TP(/MyPrivateL2TP"/g' settings.gradle
 
-          printf '%s\n' \
-            'org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8' \
-            'android.useAndroidX=true' \
-            'android.nonTransitiveRClass=true' > gradle.properties
+          echo "cGx1Z2lucyB7CiAgICBpZCAiY29tLmFuZHJvaWQuYXBwbGljYXRpb24iIHZlcnNpb24gIjguMi4wIiBhcHBseSBmYWxzZQogICAgaWQgIm9yZy5qZXRicmFpbnMua290bGluLmFuZHJvaWQiIHZlcnNpb24gIjEuOS4yMCIgYXBwbHkgZmFsc2UKfQo=" | base64 -d > build.gradle
 
-          printf '%s\n' \
-            'plugins {' \
-            '    id "com.android.application"' \
-            '    id "org.jetbrains.kotlin.android"' \
-            '}' \
-            'android {' \
-            '    namespace "com.privatevpn.l2tp"' \
-            '    compileSdk 34' \
-            '    defaultConfig {' \
-            '        applicationId "com.privatevpn.l2tp"' \
-            '        minSdk 24' \
-            '        targetSdk 34' \
-            '        versionCode 1' \
-            '        versionName "1.0"' \
-            '    }' \
-            '    compileOptions {' \
-            '        sourceCompatibility JavaVersion.VERSION_17' \
-            '        targetCompatibility JavaVersion.VERSION_17' \
-            '    }' \
-            '    kotlinOptions { jvmTarget = "17" }' \
-            '}' \
-            'dependencies {' \
-            '    implementation "androidx.core:core-ktx:1.12.0"' \
-            '    implementation "androidx.appcompat:appcompat:1.6.1"' \
-            '    implementation "com.google.android.material:material:1.11.0"' \
-            '}' > app/build.gradle
+          echo "b3JnLmdyYWRsZS5qdm1hcmdzPS1YbXgyMDQ4bSAtRGZpbGUuZW5jb2Rpbmc9VVRGLTgKYW5kcm9pZC51c2VBbmRyb2lkWD10cnVlCmFuZHJvaWQubm9uVHJhbnNpdGl2ZVJDbGFzcz10cnVlCg==" | base64 -d > gradle.properties
 
-          printf '%s\n' \
-            '<?xml version="1.0" encoding="utf-8"?>' \
-            '<manifest xmlns:android="http://schemas.android.com/apk/res/android">' \
-            '    <uses-permission android:name="android.permission.INTERNET" />' \
-            '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />' \
-            '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />' \
-            '    <application' \
-            '        android:allowBackup="false"' \
-            '        android:label="Private L2TP VPN"' \
-            '        android:supportsRtl="true"' \
-            '        android:theme="@style/Theme.AppCompat.Light.DarkActionBar">' \
-            '        <activity android:name=".MainActivity" android:exported="true">' \
-            '            <intent-filter>' \
-            '                <action android:name="android.intent.action.MAIN" />' \
-            '                <category android:name="android.intent.category.LAUNCHER" />' \
-            '            </intent-filter>' \
-            '        </activity>' \
-            '        <service android:name=".L2tpVpnService" android:exported="false" android:permission="android.permission.BIND_VPN_SERVICE">' \
-            '            <intent-filter><action android:name="android.net.VpnService" /></intent-filter>' \
-            '        </service>' \
-            '    </application>' \
-            '</manifest>' > app/src/main/AndroidManifest.xml
+          echo "cGx1Z2lucyB7CiAgICBpZCAiY29tLmFuZHJvaWQuYXBwbGljYXRpb24iCiAgICBpZCAib3JnLmpldGJyYWlucy5rb3RsaW4uYW5kcm9pZCIKfQphbmRyb2lkIHsKICAgIG5hbWVzcGFjZSAiY29tLnByaXZhdGV2cG4ubDJ0cCIKICAgIGNvbXBpbGVTZGsgMzQKICAgIGRlZmF1bHRDb25maWcgewogICAgICAgIGFwcGxpY2F0aW9uSWQgImNvbS5wcml2YXRldnBuLmwycHAiCiAgICAgICAgbWluU2RrIDI0CiAgICAgICAgdGFyZ2V0U2RrIDM0CiAgICAgICAgdmVyc2lvbkNvZGUgMQogICAgICAgIHZlcnNpb25OYW1lICIxLjAiCiAgICB9CiAgICBjb21waWxlT3B0aW9ucyB7CiAgICAgICAgc291cmNlQ29tcGF0aWJpbGl0eSBKYXZhVmVyc2lvbi5WRVJTSU9OXzE3CiAgICAgICAgdGFyZ2V0Q29tcGF0aWJpbGl0eSBKYXZhVmVyc2lvbi5WRVJTSU9OXzE3CiAgICB9CiAgICBrb3RsaW5PcHRpb25zIHsganZtVGFyZ2V0ID0gIjE3IiB9Cn0KZGVwZW5kZW5jaWVzIHsKICAgIGltcGxlbWVudGF0aW9uICJhbmRyb2lkeC5jb3JlOmNvcmUta3R4OjEuMTIuMCIKICAgIGltcGxlbWVudGF0aW9uICJhbmRyb2lkeC5hcHBjb21wYXQ6YXBwY29tcGF0OjEuNi4xIgogICAgaW1wbGVtZW50YXRpb24gImNvbS5nb29nbGUuYW5kcm9pZC5tYXRlcmlhbDptYXRlcmlhbDoxLjExLjAiCn0K" | base64 -d > app/build.gradle
 
-          printf '%s\n' \
-            '<?xml version="1.0" encoding="utf-8"?>' \
-            '<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:padding="20dp" android:layoutDirection="rtl">' \
-            '    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical">' \
-            '        <EditText android:id="@+id/etServer" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Server IP / Host" android:inputType="textUri" />' \
-            '        <EditText android:id="@+id/etUsername" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="Username" android:inputType="text" />' \
-            '        <EditText android:id="@+id/etPassword" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="Password" android:inputType="textPassword" />' \
-            '        <EditText android:id="@+id/etPsk" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:hint="IPSec PSK (Optional)" android:inputType="textPassword" />' \
-            '        <Button android:id="@+id/btnConnect" android:layout_width="match_parent" android:layout_height="56dp" android:layout_marginTop="16dp" android:text="Connect / اتصال" />' \
-            '        <TextView android:id="@+id/tvStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="20dp" android:gravity="center" android:text="Status: Disconnected" android:textSize="18sp" android:textStyle="bold" />' \
-            '        <TextView android:id="@+id/tvTimer" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:gravity="center" android:text="00:00:00" android:textSize="16sp" />' \
-            '        <TextView android:id="@+id/tvDownload" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop
+          echo "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPG1hbmlmZXN0IHhtbG5zOmFuZHJvaWQ9Imh0dHA6Ly9zY2hlbWFzLmFuZHJvaWQuY29tL2apkL3Jlcy9hbmRyb2lkIj4KICAgIDx1c2VzLXBlcm1pc3Npb24gYW5kcm9pZDpuYW1lPSJhbmRyb2lkLnBlcm1pc3Npb24uSU5URVJORVQiIC8+CiAgICA8dXNlcy1wZXJtaXNzaW9uIGFuZHJvaWQ6bmFtZT0iYW5kcm9pZC5wZXJtaXNzaW9uLkFDQ0VTU19ORVRXT1JLX1NUQVRFIiAvPgogICAgPHVzZXMtcGVybWlzc2lvbiBhbmRyb2lkOm5hbWU9ImFuZHJvaWQucGVybWlzc2lvbi5GT1JFR1JPVU5EX1NFUlZJQ0UiIC8+CiAgICA8YXBwbGljYXRpb24KICAgICAgICBhbmRyb2lkOmFsbG93QmFja3VwPSJmYWxzZSIKICAgICAgICBhbmRyb2lkOmxhYmVsPSJQcml2YXRlIEwyVFAgVlBOIgogICAgICAgIGFuZHJvaWQ6c3VwcG9ydHNSdGw9InRydWUiCiAgICAgICAgYW5kcm9pZDp0aGVtZT0iQHN0eWxlL1RoZW1lLkFwcENvbXBhdC5MaWdodC5EYXJrQWN0aW9uQmFyIj4KICAgICAgICA8YWN0aXZpdHkgYW5kcm9pZDpuYW1lPSIuTWFpbkFjdGl2aXR5IiBhbmRyb2lkOmV4cG9ydGVkPSJ0cnVlIj4KICAgICAgICAgICAgPGludGVudC1maWx0ZXI+CiAgICAgICAgICAgICAgICA8YWN0aW9uIGFuZHJvaWQ6bmFtZT0iYW5kcm9pZC5pbnRlbnQuYWN0aW9uLk1BSU4iIC8+CiAgICAgICAgICAgICAgICA8Y2F0ZWdvcnkgYW5kcm9pZDpuYW1lPSJhbmRyb2lkLmludGVudC5jYXRlZ29yeS5MQVVOU0hFUiIgLz4KICAgICAgICAgICAgPC9pbnRlbnQtZmlsdGVyPgogICAgICAgIDwvYWN0aXZpdHk+CiAgICAgICAgPHNlcnZpY2UgYW5kcm9pZDpuYW1lPSIuTDJ0cFZwblNlcnZpY2UiIGFuZHJvaWQ6ZXhwb3J0ZWQ9ImZhbHNlIiBhbmRyb2lkOnBlcm1pc3Npb249ImFuZHJvaWQucGVybWlzc2lvbi5CSU5EX1ZQTl9TRVJWSUNFIj4KICAgICAgICAgICAgPGludGVudC1maWx0ZXI+PGFjdGlvbiBhbmRyb2lkOm5hbWU9ImFuZHJvaWQubmV0LlZwblNlcnZpY2UiIC8+PC9pbnRlbnQtZmlsdGVyPgogICAgICAgIDwvc2VydmljZT4KICAgIDwvYXBwbGljYXRpb24+CjwvbWFuaWZlc3Q+Cg==" | base64 -d > app/src/main/AndroidManifest.xml
+
+          sed -i 's/apk\/res\/android/apk\/res\/android/g' app/src/main/AndroidManifest.xml
+          sed -i 's/com\/ajk\/res/com\/apk\/res/g' app/src/main/AndroidManifest.xml
+          sed -i 's/LAUNSHER/LAUNCHER/g' app/src/main/AndroidManifest.xml
+
+          echo "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPFNjcm9sbFZpZXcgeG1sbnM6YW5kcm9pZD0iaHR0cDovL3NjaGVtYXMuYW5kcm9pZC5jb20vYXBrL3Jlcy9hbmRyb2lkIiBhbmRyb2lkOmxheW91dF93aWR0aD0ibWF0Y2hfcGFyZW50IiBhbmRyb2lkOmxheW91dF9oZWlnaHQ9Im1hdGNoX3BhcmVudCIgYW5kcm9pZDpwYWRkaW5nPSIyMGRwIiBhbmRyb2lkOmxheW91dERpcmVjdGlvbj0icnRsIj4KICAgIDxMaW5lYXJMYXlvdXQgYW5kcm9pZDpsYXlvdXRfd2lkdGg9Im1hdGNoX3BhcmVudCIgYW5kcm9pZDpsYXlvdXRfaGVpZ2h0PSJ3cmFwX2NvbnRlbnQiIGFuZHJvaWQ6b3JpZW50YXRpb249InZlcnRpY2FsIj4KICAgICAgICA8RWRpd
