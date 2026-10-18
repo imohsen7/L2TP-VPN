@@ -34,6 +34,10 @@ class MainActivity : AppCompatActivity() {
     private var pendingPsk = ""
     private var pendingUser = ""
     private var pendingPass = ""
+    private var pendingProtocol = "l2tp"
+    private var pendingDns1 = "1.1.1.1"
+    private var pendingDns2 = "8.8.8.8"
+    private var pendingMtu = 1400
 
     private val vpnReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -42,7 +46,7 @@ class MainActivity : AppCompatActivity() {
             val bytesOut = intent?.getLongExtra("BYTES_OUT", 0L) ?: 0L
             val speedIn = intent?.getLongExtra("SPEED_IN", 0L) ?: 0L
             val speedOut = intent?.getLongExtra("SPEED_OUT", 0L) ?: 0L
-            val assignedIp = intent?.getStringExtra("ASSIGNED_IP") ?: "10.10.8.2"
+            val assignedIp = intent?.getStringExtra("ASSIGNED_IP") ?: ""
             val error = intent?.getStringExtra("ERROR") ?: ""
 
             val json = JSONObject().apply {
@@ -69,7 +73,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Seamless dark status bar & navigation bar
         window.statusBarColor = Color.parseColor("#0F172A")
         window.navigationBarColor = Color.parseColor("#0F172A")
 
@@ -96,14 +99,13 @@ class MainActivity : AppCompatActivity() {
                 }
                 webViewClient = object : WebViewClient() {
                     override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
-                        Log.e(TAG, "WebView error: $description at $failingUrl")
+                        Log.e(TAG, "WebView error: " + description + " at " + failingUrl)
                     }
                 }
                 addJavascriptInterface(AndroidBridge(), "AndroidBridge")
             }
 
             setContentView(webView)
-            // Load local offline assets directly from assets/www/index.html
             webView.loadUrl("file:///android_asset/www/index.html")
 
             val filter = IntentFilter(L2tpVpnService.ACTION_VPN_UPDATE)
@@ -116,11 +118,34 @@ class MainActivity : AppCompatActivity() {
     inner class AndroidBridge {
         @JavascriptInterface
         fun connectVpn(server: String, psk: String, user: String, pass: String) {
+            connectVpn(server, psk, user, pass, "l2tp", "1.1.1.1", "8.8.8.8", 1400)
+        }
+
+        @JavascriptInterface
+        fun connectVpn(server: String, psk: String, user: String, pass: String, protocol: String) {
+            connectVpn(server, psk, user, pass, protocol, "1.1.1.1", "8.8.8.8", 1400)
+        }
+
+        @JavascriptInterface
+        fun connectVpn(
+            server: String, 
+            psk: String, 
+            user: String, 
+            pass: String, 
+            protocol: String, 
+            dns1: String, 
+            dns2: String, 
+            mtu: Int
+        ) {
             runOnUiThread {
                 pendingServer = server
                 pendingPsk = psk
                 pendingUser = user
                 pendingPass = pass
+                pendingProtocol = if (protocol.equals("pptp", ignoreCase = true)) "pptp" else "l2tp"
+                pendingDns1 = if (dns1.isNotBlank()) dns1 else "1.1.1.1"
+                pendingDns2 = if (dns2.isNotBlank()) dns2 else "8.8.8.8"
+                pendingMtu = if (mtu in 1280..1500) mtu else 1400
 
                 try {
                     val intent = VpnService.prepare(this@MainActivity)
@@ -163,7 +188,7 @@ class MainActivity : AppCompatActivity() {
                 startVpnService()
             } else {
                 Toast.makeText(this, "دسترسی ایجاد اتصال وی‌پی‌ان تایید نشد", Toast.LENGTH_SHORT).show()
-                webView.evaluateJavascript("if (window.onNativeVpnUpdate) { window.onNativeVpnUpdate({status: 'error'}); }", null)
+                webView.evaluateJavascript("if (window.onNativeVpnUpdate) { window.onNativeVpnUpdate({status: 'error', error: 'اجازه دسترسی توسط کاربر لغو شد'}); }", null)
             }
         }
     }
@@ -176,6 +201,10 @@ class MainActivity : AppCompatActivity() {
                 putExtra("PSK", pendingPsk)
                 putExtra("USER", pendingUser)
                 putExtra("PASS", pendingPass)
+                putExtra("PROTOCOL", pendingProtocol)
+                putExtra("DNS1", pendingDns1)
+                putExtra("DNS2", pendingDns2)
+                putExtra("MTU", pendingMtu)
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
