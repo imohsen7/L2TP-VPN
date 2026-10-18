@@ -1,0 +1,15 @@
+{
+  "id": "default-de",
+  "name": "آلمان - فرانکفورت (L2TP/IPSec)",
+  "server": "de-fra1.l2tp-vpn.net",
+  "psk": "vpnsecret2026",
+  "username": "vpnuser_de",
+  "password": "password123",
+  "dnsPrimary": "1.1.1.1",
+  "dnsSecondary": "8.8.8.8",
+  "mtu": 1400,
+  "routeAllTraffic": true,
+  "countryCode": "DE",
+  "countryName": "Germany",
+  "createdAt": 1792241077456
+}
