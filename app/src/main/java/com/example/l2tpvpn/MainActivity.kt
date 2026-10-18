@@ -6,10 +6,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Color
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -49,7 +51,11 @@ class MainActivity : AppCompatActivity() {
                 put("speedOut", speedOut)
             }
             runOnUiThread {
-                webView.evaluateJavascript("window.onNativeVpnUpdate && window.onNativeVpnUpdate($json)", null)
+                try {
+                    webView.evaluateJavascript("window.onNativeVpnUpdate && window.onNativeVpnUpdate($json)", null)
+                } catch (e: Exception) {
+                    Log.e(TAG, "evaluateJavascript error", e)
+                }
             }
         }
     }
@@ -58,29 +64,41 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Seamless dark status bar & navigation bar
+        window.statusBarColor = Color.parseColor("#0F172A")
+        window.navigationBarColor = Color.parseColor("#0F172A")
+
         try {
             webView = WebView(this).apply {
+                setBackgroundColor(Color.parseColor("#0F172A"))
                 settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
                     allowFileAccess = true
                     allowContentAccess = true
+                    allowFileAccessFromFileURLs = true
+                    allowUniversalAccessFromFileURLs = true
                     databaseEnabled = true
                     useWideViewPort = true
                     loadWithOverviewMode = true
                     cacheMode = WebSettings.LOAD_DEFAULT
                 }
-                webChromeClient = WebChromeClient()
+                webChromeClient = object : WebChromeClient() {
+                    override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
+                        Log.d("WebViewConsole", "${message?.message()} [line ${message?.lineNumber()}]")
+                        return true
+                    }
+                }
                 webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        super.onPageFinished(view, url)
-                        Log.i(TAG, "WebView page loaded: $url")
+                    override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                        Log.e(TAG, "WebView error: $description at $failingUrl")
                     }
                 }
                 addJavascriptInterface(AndroidBridge(), "AndroidBridge")
             }
 
             setContentView(webView)
+            // Load local offline assets directly from assets/www/index.html
             webView.loadUrl("file:///android_asset/www/index.html")
 
             val filter = IntentFilter(L2tpVpnService.ACTION_VPN_UPDATE)
@@ -112,7 +130,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "VpnService.prepare error", e)
-                    Toast.makeText(this@MainActivity, "خطا در دسترسی VPN: " + e.message, Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, "خطا در اتصال: " + e.message, Toast.LENGTH_SHORT).show()
                 }
             }
         }

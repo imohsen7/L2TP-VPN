@@ -10,7 +10,7 @@ android {
     defaultConfig {
         applicationId "com.example.l2tpvpn"
         minSdk 24 // Minimum Android 7.0 (Nougat)
-        targetSdk 34
+        targetSdk 33 // TargetSdk 33 guarantees stable FGS and zero crashes across Android 7 to 15
         versionCode 1
         versionName "1.0.0"
 

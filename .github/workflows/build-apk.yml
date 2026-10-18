@@ -26,8 +26,8 @@ jobs:
 
       - name: Build Android APK
         run: |
+          chmod +x ./gradlew || true
           if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
             ./gradlew assembleDebug --stacktrace || gradle assembleDebug --stacktrace
           else
             gradle assembleDebug --stacktrace

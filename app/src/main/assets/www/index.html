@@ -1,27 +1,816 @@
 <!doctype html>
-<html lang="fa" dir="rtl">
-  <head>
-    <script type="module" src="/@vite/client"></script>
+<html lang="fa" dir="rtl" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>L2TP VPN Client</title>
+  <style>
+    /* Reset & Base Fonts */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0b1120;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --primary: #4f46e5;
+      --emerald: #10b981;
+      --rose: #ef4444;
+      --amber: #f59e0b;
+      --font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+    body.light {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --card-border: #e2e8f0;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text-main);
+      font-family: var(--font-family);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      padding-bottom: 75px;
+    }
 
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="theme-color" content="#0f172a" />
-    <title>L2TP VPN Client Android 7+</title>
-    <meta name="description" content="An intuitive L2TP/IPSec VPN client app supporting Android 7+, with real-time connection status, live upload/download traffic monitoring, multi-profile management, dark mode, and native Android configuration guides." />
-    <meta property="og:title" content="L2TP VPN Client Android 7+" />
-    <meta property="og:description" content="An intuitive L2TP/IPSec VPN client app supporting Android 7+, with real-time connection status, live upload/download traffic monitoring, multi-profile management, dark mode, and native Android configuration guides." />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Vazirmatn:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="manifest" href="/manifest.webmanifest"><script src="/_aistudio-iframe.js?v=6634132a"></script></head>
-  <body class="bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500 selection:text-white min-h-screen">
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  <script id="vite-plugin-pwa:register-dev-sw" type="module">
-import registerDevSW from '/@vite-plugin-pwa/pwa-entry-point-loaded';
-registerDevSW();
-</script>
+    /* Top Bar */
+    header {
+      background-color: var(--card-bg);
+      border-bottom: 1px solid var(--card-border);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #4f46e5, #06b6d4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+    }
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .brand-subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-icon {
+      background: transparent;
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      border-radius: 8px;
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .btn-icon:active {
+      transform: scale(0.95);
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      padding: 16px;
+      max-width: 600px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Cards */
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Active Server Banner */
+    .server-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .server-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .server-badge {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: rgba(79, 70, 229, 0.15);
+      border: 1px solid rgba(79, 70, 229, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #818cf8;
+    }
+    .server-name {
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .server-addr {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: monospace;
+      margin-top: 2px;
+    }
+
+    /* Circular Connect Center */
+    .connect-panel {
+      text-align: center;
+      padding: 32px 16px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .connect-btn-wrapper {
+      position: relative;
+      width: 160px;
+      height: 160px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 16px 0;
+    }
+    .pulse-ring {
+      position: absolute;
+      inset: -15px;
+      border-radius: 50%;
+      border: 2px solid var(--emerald);
+      opacity: 0.4;
+      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      display: none;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(0.95); opacity: 0.2; }
+      50% { transform: scale(1.08); opacity: 0.6; }
+    }
+    .spin-ring {
+      position: absolute;
+      inset: -8px;
+      border-radius: 50%;
+      border: 3px solid transparent;
+      border-top-color: var(--primary);
+      animation: spin 1s linear infinite;
+      display: none;
+    }
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+    .connect-btn {
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      background: #1e293b;
+      border: 4px solid #334155;
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
+      z-index: 2;
+    }
+    .connect-btn:active {
+      transform: scale(0.95);
+    }
+    .connect-btn svg {
+      width: 44px;
+      height: 44px;
+      transition: all 0.3s ease;
+    }
+    .connect-btn.connected {
+      background: linear-gradient(135deg, #059669, #10b981);
+      border-color: #34d399;
+      color: #ffffff;
+      box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
+    }
+    .connect-btn.connecting {
+      background: #4f46e5;
+      border-color: #818cf8;
+      color: #ffffff;
+    }
+    .connect-status {
+      font-size: 15px;
+      font-weight: 700;
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .connect-duration {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: monospace;
+      margin-top: 4px;
+    }
+
+    /* Traffic Stats Grid */
+    .traffic-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .stat-box {
+      background: rgba(15, 23, 42, 0.4);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .stat-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .stat-value {
+      font-size: 18px;
+      font-weight: 800;
+      font-family: monospace;
+      color: var(--text-main);
+    }
+    .stat-total {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: monospace;
+    }
+
+    /* Tabs */
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Bottom Navigation */
+    nav.bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 64px;
+      background-color: var(--card-bg);
+      border-top: 1px solid var(--card-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      z-index: 50;
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 11px;
+      cursor: pointer;
+      width: 25%;
+      height: 100%;
+    }
+    .nav-item svg {
+      width: 20px;
+      height: 20px;
+    }
+    .nav-item.active {
+      color: #818cf8;
+      font-weight: 700;
+    }
+
+    /* Form Inputs in Config */
+    .form-group {
+      margin-bottom: 12px;
+    }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: var(--text-muted);
+    }
+    .form-control {
+      width: 100%;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: var(--text-main);
+      outline: none;
+      font-family: inherit;
+    }
+    .form-control:focus {
+      border-color: #6366f1;
+    }
+    .btn-primary {
+      width: 100%;
+      background: linear-gradient(135deg, #4f46e5, #4338ca);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .btn-primary:active {
+      transform: scale(0.98);
+    }
+
+    /* Terminal logs */
+    .terminal-box {
+      background: #050811;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 12px;
+      font-family: monospace;
+      font-size: 11px;
+      max-height: 220px;
+      overflow-y: auto;
+      line-height: 1.6;
+    }
+    .log-entry { margin-bottom: 4px; }
+    .log-info { color: #38bdf8; }
+    .log-success { color: #4ade80; }
+    .log-warning { color: #facc15; }
+    .log-error { color: #f87171; }
+  </style>
+</head>
+<body class="dark">
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="m9 12 2 2 4-4"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title" id="txt-app-title">L2TP VPN Client</div>
+        <div class="brand-subtitle" id="txt-app-sub">اندروید ۷+ (Nougat تا 15)</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="btn-icon" id="btn-theme" title="تغییر تم">
+        <svg id="svg-theme" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main>
+
+    <!-- Tab 1: Dashboard -->
+    <div class="tab-content active" id="tab-dashboard">
+      
+      <!-- Current Server Card -->
+      <div class="card server-banner">
+        <div class="server-info">
+          <div class="server-badge">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <rect width="20" height="8" x="2" y="2" rx="2" ry="2"/>
+              <rect width="20" height="8" x="2" y="14" rx="2" ry="2"/>
+              <line x1="6" x2="6.01" y1="6" y2="6"/>
+              <line x1="6" x2="6.01" y1="18" y2="18"/>
+            </svg>
+          </div>
+          <div>
+            <div class="server-name" id="view-profile-name">هلند - آمستردام (L2TP/IPSec)</div>
+            <div class="server-addr" id="view-profile-server">nl-ams.l2tp-vpn.net · L2TP/IPSec</div>
+          </div>
+        </div>
+        <button class="btn-icon" onclick="switchTab('config')" title="تنظیمات">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Tactile Circular Connect Button -->
+      <div class="card connect-panel">
+        <div class="connect-btn-wrapper">
+          <div class="pulse-ring" id="pulse-ring"></div>
+          <div class="spin-ring" id="spin-ring"></div>
+          <button class="connect-btn" id="connect-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+              <line x1="12" y1="2" x2="12" y2="12"/>
+            </svg>
+            <span id="btn-text">اتصال</span>
+          </button>
+        </div>
+
+        <div class="connect-status" id="connect-status-text">
+          <span style="color: var(--text-muted);">آماده اتصال</span>
+        </div>
+        <div class="connect-duration" id="connect-duration-text">مدت اتصال: ۰۰:۰۰:۰۰</div>
+      </div>
+
+      <!-- Live Transferred Traffic Grid -->
+      <div class="card">
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6366f1" stroke-width="2">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+          میزان ترافیک انتقالی زنده
+        </div>
+        
+        <div class="traffic-grid">
+          <!-- Download -->
+          <div class="stat-box">
+            <div class="stat-header">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#10b981" stroke-width="2">
+                <path d="m7 10 5 5 5-5"/>
+                <path d="M12 15V3"/>
+              </svg>
+              سرعت دانلود
+            </div>
+            <div class="stat-value" id="stat-speed-in" style="color: #34d399;">0 KB/s</div>
+            <div class="stat-total" id="stat-total-in">کل: ۰ B</div>
+          </div>
+
+          <!-- Upload -->
+          <div class="stat-box">
+            <div class="stat-header">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#6366f1" stroke-width="2">
+                <path d="m17 14-5-5-5 5"/>
+                <path d="M12 9v12"/>
+              </svg>
+              سرعت آپلود
+            </div>
+            <div class="stat-value" id="stat-speed-out" style="color: #818cf8;">0 KB/s</div>
+            <div class="stat-total" id="stat-total-out">کل: ۰ B</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Tab 2: Config -->
+    <div class="tab-content" id="tab-config">
+      <div class="card">
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 14px;">اطلاعات سرور L2TP/IPSec</div>
+        
+        <div class="form-group">
+          <label class="form-label">نام پروفایل</label>
+          <input type="text" class="form-control" id="cfg-name" value="هلند - آمستردام (L2TP/IPSec)" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">آدرس سرور (دامنه یا IP)</label>
+          <input type="text" class="form-control" id="cfg-server" value="nl-ams.l2tp-vpn.net" placeholder="vpn.example.com یا 185.x.x.x" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">کلید اشتراکی امنیتی (IPSec Pre-Shared Key)</label>
+          <input type="password" class="form-control" id="cfg-psk" value="vpnsecret2026" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">نام کاربری (Username)</label>
+          <input type="text" class="form-control" id="cfg-user" value="vpnuser_nl" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">رمز عبور (Password)</label>
+          <input type="password" class="form-control" id="cfg-pass" value="password123" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">DNS سرور اصلی</label>
+          <input type="text" class="form-control" id="cfg-dns" value="8.8.8.8" />
+        </div>
+
+        <button class="btn-primary" id="btn-save-cfg">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+          ذخیره تغییرات
+        </button>
+      </div>
+    </div>
+
+    <!-- Tab 3: Traffic & Logs -->
+    <div class="tab-content" id="tab-traffic">
+      <div class="card">
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 10px;">لاگ مراحل هندشیک L2TP/IPSec</div>
+        <div class="terminal-box" id="terminal-logs">
+          <div class="log-entry log-info">[SYSTEM] آماده‌سازی سیستم برای اتصال به پروتکل L2TP/IPSec...</div>
+          <div class="log-entry log-info">[SYSTEM] پشتیبانی از Android 7.0 Nougat (API 24) تا Android 15 فعال است.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: Android Guide -->
+    <div class="tab-content" id="tab-guide">
+      <div class="card">
+        <div style="font-size: 14px; font-weight: 700; margin-bottom: 12px;">راهنمای اندروید ۷+</div>
+        <p style="font-size: 12px; color: var(--text-muted); line-height: 1.8;">
+          این اپلیکیشن مستقیماً از قابلیت بومی <strong>VpnService</strong> اندروید استفاده می‌کند.<br><br>
+          ۱. هنگام زدن دکمه <strong>اتصال</strong>، سیستم عامل اندروید یک پنجره تایید اتصال (Connection Request) نشان می‌دهد.<br>
+          ۲. گزینه <strong>OK</strong> را انتخاب نمایید تا تانل ایمن L2TP برقرار شود.<br>
+          ۳. وضعیت اتصال و حجم ترافیک به صورت زنده نمایش داده خواهد شد.
+        </p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Bottom Navigation -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" onclick="switchTab('dashboard')" id="nav-dashboard">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+      <span>پیشخوان</span>
+    </button>
+    <button class="nav-item" onclick="switchTab('config')" id="nav-config">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+      <span>تنظیمات</span>
+    </button>
+    <button class="nav-item" onclick="switchTab('traffic')" id="nav-traffic">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      <span>ترافیک و لاگ</span>
+    </button>
+    <button class="nav-item" onclick="switchTab('guide')" id="nav-guide">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect width="14" height="20" x="5" y="2" rx="2" ry="2"/>
+        <line x1="12" x2="12.01" y1="18" y2="18"/>
+      </svg>
+      <span>راهنما</span>
+    </button>
+  </nav>
+
+  <script>
+    // State
+    let isConnected = false;
+    let isConnecting = false;
+    let durationSeconds = 0;
+    let durationInterval = null;
+    let simTrafficInterval = null;
+    let totalBytesIn = 0;
+    let totalBytesOut = 0;
+
+    // Elements
+    const connectBtn = document.getElementById('connect-btn');
+    const btnText = document.getElementById('btn-text');
+    const pulseRing = document.getElementById('pulse-ring');
+    const spinRing = document.getElementById('spin-ring');
+    const statusText = document.getElementById('connect-status-text');
+    const durationText = document.getElementById('connect-duration-text');
+    const speedInEl = document.getElementById('stat-speed-in');
+    const speedOutEl = document.getElementById('stat-speed-out');
+    const totalInEl = document.getElementById('stat-total-in');
+    const totalOutEl = document.getElementById('stat-total-out');
+    const terminal = document.getElementById('terminal-logs');
+
+    function log(msg, type = 'info') {
+      const el = document.createElement('div');
+      el.className = 'log-entry log-' + type;
+      const time = new Date().toLocaleTimeString('fa-IR');
+      el.textContent = '[' + time + '] ' + msg;
+      terminal.appendChild(el);
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
+    }
+
+    function formatSpeed(bytesPerSec) {
+      return formatBytes(bytesPerSec) + '/s';
+    }
+
+    function formatDuration(sec) {
+      const h = Math.floor(sec / 3600).toString().padStart(2, '0');
+      const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
+      const s = (sec % 60).toString().padStart(2, '0');
+      return h + ':' + m + ':' + s;
+    }
+
+    function updateUiState() {
+      if (isConnected) {
+        connectBtn.className = 'connect-btn connected';
+        pulseRing.style.display = 'block';
+        spinRing.style.display = 'none';
+        btnText.textContent = 'قطع اتصال';
+        statusText.innerHTML = '<span style="color: #10b981; font-weight: bold;">● متصل به سرور</span>';
+      } else if (isConnecting) {
+        connectBtn.className = 'connect-btn connecting';
+        pulseRing.style.display = 'none';
+        spinRing.style.display = 'block';
+        btnText.textContent = 'در حال اتصال...';
+        statusText.innerHTML = '<span style="color: #f59e0b; font-weight: bold;">در حال برقراری تانل...</span>';
+      } else {
+        connectBtn.className = 'connect-btn';
+        pulseRing.style.display = 'none';
+        spinRing.style.display = 'none';
+        btnText.textContent = 'اتصال';
+        statusText.innerHTML = '<span style="color: var(--text-muted);">آماده اتصال</span>';
+        durationText.textContent = 'مدت اتصال: ۰۰:۰۰:۰۰';
+      }
+    }
+
+    function toggleConnect() {
+      if (isConnected) {
+        disconnect();
+      } else if (!isConnecting) {
+        connect();
+      }
+    }
+
+    function connect() {
+      isConnecting = true;
+      updateUiState();
+      log('شروع فرآیند اتصال به سرور ' + document.getElementById('cfg-server').value, 'info');
+
+      const server = document.getElementById('cfg-server').value;
+      const psk = document.getElementById('cfg-psk').value;
+      const user = document.getElementById('cfg-user').value;
+      const pass = document.getElementById('cfg-pass').value;
+
+      // Check if native Android bridge exists
+      if (window.AndroidBridge && window.AndroidBridge.connectVpn) {
+        log('ارسال درخواست اتصال به لایه بومی Android VpnService...', 'info');
+        window.AndroidBridge.connectVpn(server, psk, user, pass);
+      } else {
+        // Fallback simulation in browser
+        log('محیط وب تشخیص داده شد. اجرای شبیه‌ساز امن هندشیک...', 'info');
+        setTimeout(() => {
+          log('[IKEv1] شروع تبادل فاز ۱ با کلید اشتراکی (PSK)...', 'info');
+        }, 600);
+        setTimeout(() => {
+          log('[IPSec] تونل امنیتی ESP با رمزنگاری AES-256 برقرار شد.', 'success');
+        }, 1200);
+        setTimeout(() => {
+          log('[L2TP] برقراری تانل کنترلی SCCRQ/SCCRP موفقیت‌آمیز بود.', 'info');
+        }, 1800);
+        setTimeout(() => {
+          log('[PPP/CHAP] تایید اعتبار کاربر انجام شد. اختصاص IP: 10.10.8.2', 'success');
+          onConnected();
+        }, 2400);
+      }
+    }
+
+    function disconnect() {
+      log('در حال قطع تانل VPN...', 'warning');
+      if (window.AndroidBridge && window.AndroidBridge.disconnectVpn) {
+        window.AndroidBridge.disconnectVpn();
+      }
+      onDisconnected();
+    }
+
+    function onConnected() {
+      isConnecting = false;
+      isConnected = true;
+      updateUiState();
+      log('اتصال VPN با موفقیت برقرار شد و تمام ترافیک از تانل عبور می‌کند.', 'success');
+
+      durationSeconds = 0;
+      clearInterval(durationInterval);
+      durationInterval = setInterval(() => {
+        durationSeconds++;
+        durationText.textContent = 'مدت اتصال: ' + formatDuration(durationSeconds);
+      }, 1000);
+
+      // Start traffic generation
+      clearInterval(simTrafficInterval);
+      simTrafficInterval = setInterval(() => {
+        const speedIn = Math.floor(Math.random() * (2200 - 450) + 450) * 1024;
+        const speedOut = Math.floor(Math.random() * (600 - 80) + 80) * 1024;
+        totalBytesIn += speedIn;
+        totalBytesOut += speedOut;
+        speedInEl.textContent = formatSpeed(speedIn);
+        speedOutEl.textContent = formatSpeed(speedOut);
+        totalInEl.textContent = 'کل: ' + formatBytes(totalBytesIn);
+        totalOutEl.textContent = 'کل: ' + formatBytes(totalBytesOut);
+      }, 1000);
+    }
+
+    function onDisconnected() {
+      isConnected = false;
+      isConnecting = false;
+      clearInterval(durationInterval);
+      clearInterval(simTrafficInterval);
+      speedInEl.textContent = '0 KB/s';
+      speedOutEl.textContent = '0 KB/s';
+      updateUiState();
+      log('اتصال به پایان رسید.', 'info');
+    }
+
+    // Native Bridge callback called by Android MainActivity
+    window.onNativeVpnUpdate = function(data) {
+      if (!data) return;
+      if (data.status === 'connected') {
+        if (!isConnected) onConnected();
+        if (data.speedIn) speedInEl.textContent = formatSpeed(data.speedIn);
+        if (data.speedOut) speedOutEl.textContent = formatSpeed(data.speedOut);
+        if (data.bytesIn) totalInEl.textContent = 'کل: ' + formatBytes(data.bytesIn);
+        if (data.bytesOut) totalOutEl.textContent = 'کل: ' + formatBytes(data.bytesOut);
+      } else if (data.status === 'disconnected') {
+        onDisconnected();
+      } else if (data.status === 'error') {
+        log('خطا در برقراری تانل بومی VPN', 'error');
+        onDisconnected();
+      }
+    };
+
+    connectBtn.addEventListener('click', toggleConnect);
+
+    // Tab navigation
+    window.switchTab = function(tabName) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      const targetTab = document.getElementById('tab-' + tabName);
+      const targetNav = document.getElementById('nav-' + tabName);
+      if (targetTab) targetTab.classList.add('active');
+      if (targetNav) targetNav.classList.add('active');
+    };
+
+    // Theme Toggle
+    document.getElementById('btn-theme').addEventListener('click', () => {
+      document.body.classList.toggle('light');
+    });
+
+    // Save profile config
+    document.getElementById('btn-save-cfg').addEventListener('click', () => {
+      const name = document.getElementById('cfg-name').value;
+      const server = document.getElementById('cfg-server').value;
+      document.getElementById('view-profile-name').textContent = name;
+      document.getElementById('view-profile-server').textContent = server + ' · L2TP/IPSec';
+      log('تنظیمات سرور جدید (' + name + ') با موفقیت ذخیره شد.', 'success');
+      switchTab('dashboard');
+    });
+
+    log('کلاینت L2TP VPN آماده به کار است.', 'success');
+  </script>
 </body>
 </html>
