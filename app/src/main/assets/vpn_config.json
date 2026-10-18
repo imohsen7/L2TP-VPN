@@ -1,15 +1,15 @@
 {
-  "id": "default-de",
-  "name": "آلمان - فرانکفورت (L2TP/IPSec)",
-  "server": "de-fra1.l2tp-vpn.net",
+  "id": "default-nl",
+  "name": "هلند - آمستردام (L2TP/IPSec)",
+  "server": "nl-ams.l2tp-vpn.net",
   "psk": "vpnsecret2026",
-  "username": "vpnuser_de",
+  "username": "vpnuser_nl",
   "password": "password123",
-  "dnsPrimary": "1.1.1.1",
-  "dnsSecondary": "8.8.8.8",
+  "dnsPrimary": "8.8.8.8",
+  "dnsSecondary": "1.0.0.1",
   "mtu": 1400,
   "routeAllTraffic": true,
-  "countryCode": "DE",
-  "countryName": "Germany",
-  "createdAt": 1792241077456
+  "countryCode": "NL",
+  "countryName": "Netherlands",
+  "createdAt": 1792241076456
 }

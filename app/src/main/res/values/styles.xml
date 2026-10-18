@@ -4,5 +4,6 @@
         <item name="colorPrimary">#4F46E5</item>
         <item name="colorPrimaryVariant">#3730A3</item>
         <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="android:windowBackground">#0F172A</item>
     </style>
 </resources>

@@ -14,7 +14,8 @@
         android:label="L2TP VPN Client"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.L2tpVpn">
+        android:theme="@style/Theme.L2tpVpn"
+        android:usesCleartextTraffic="true">
 
         <!-- VPN Service Component -->
         <service
@@ -29,6 +30,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
