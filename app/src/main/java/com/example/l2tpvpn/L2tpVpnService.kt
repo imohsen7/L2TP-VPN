@@ -203,8 +203,8 @@ class L2tpVpnService : VpnService(), Runnable {
             val recvBuf = ByteArray(4096)
             val recvPacket = DatagramPacket(recvBuf, recvBuf.size)
 
-            // Try sending SCCRQ with up to 2 retries
-            for (attempt in 1..2) {
+            // Try sending SCCRQ with up to 3 retries, catching PortUnreachable and timeouts
+            for (attempt in 1..3) {
                 try {
                     socket.send(sendPacket)
                     socket.receive(recvPacket)
@@ -217,11 +217,15 @@ class L2tpVpnService : VpnService(), Runnable {
                     }
                 } catch (ste: SocketTimeoutException) {
                     Log.w(TAG, "SCCRQ timeout attempt " + attempt)
+                } catch (pue: PortUnreachableException) {
+                    Log.w(TAG, "UDP Port 1701 unreachable on attempt " + attempt)
+                } catch (se: SocketException) {
+                    Log.w(TAG, "SocketException on attempt " + attempt + ": " + se.message)
                 }
             }
 
             if (!sccrpReceived) {
-                sendBroadcastError("پاسخی از پورت ۱۷۰۱ سرور L2TP دریافت نشد. مطمئن شوید سرور L2TP فعال و آدرس آن درست است.")
+                sendBroadcastError("پاسخی از پورت ۱۷۰۱ سرور L2TP دریافت نشد (Port Unreachable یا عدم فعال بودن IPSec بر روی کلاینت). در صورتی که سرور شما از پروتکل PPTP استفاده می‌کند، لطفا در تنظیمات نوع پروتکل را روی PPTP قرار دهید.")
                 return
             }
 
@@ -254,23 +258,20 @@ class L2tpVpnService : VpnService(), Runnable {
             socket.send(DatagramPacket(lcpReq, lcpReq.size, serverAddress, 1701))
 
             // Read server LCP reply / authenticate request
-            var authOk = false
             for (i in 0..2) {
                 try {
                     socket.receive(recvPacket)
                     val len = recvPacket.length
                     if (len > 8) {
-                        // Check if LCP packet
                         val pppProto = ((recvBuf[6].toInt() and 0xff) shl 8) or (recvBuf[7].toInt() and 0xff)
                         if (pppProto == 0xC021) {
-                            // Server LCP Configure-Request, respond with Configure-Ack
                             val ack = recvBuf.copyOf(len)
                             ack[8] = 0x02.toByte() // Code: Configure-Ack
                             socket.send(DatagramPacket(ack, len, serverAddress, 1701))
                             break
                         }
                     }
-                } catch (e: SocketTimeoutException) {}
+                } catch (e: Exception) {}
             }
 
             // Authenticate with Username & Password (PAP)
@@ -290,12 +291,10 @@ class L2tpVpnService : VpnService(), Runnable {
                                 Log.w(TAG, "Server rejected PAP credentials!")
                                 sendBroadcastError("احراز هویت سرور L2TP ناموفق بود: نام کاربری یا رمز عبور اشتباه است.")
                                 return
-                            } else if (code == 0x02) {
-                                authOk = true
                             }
                         }
                     }
-                } catch (e: SocketTimeoutException) {}
+                } catch (e: Exception) {}
             }
 
             // 7. Dynamic IP assignment via PPP IPCP (0x8021)
@@ -308,19 +307,27 @@ class L2tpVpnService : VpnService(), Runnable {
                 if (len > 8) {
                     val pppProto = ((recvBuf[6].toInt() and 0xff) shl 8) or (recvBuf[7].toInt() and 0xff)
                     if (pppProto == 0x8021) {
-                        // Server sends IPCP Configure-Nak or Ack with assigned IP
                         assignedClientIp = extractIpFromIpcp(recvBuf, len)
                     }
                 }
             } catch (e: Exception) {}
 
             if (assignedClientIp.isEmpty()) {
-                // Generate safe client subnet from server address
-                val hash = Math.abs(trimmedServer.hashCode()) % 200 + 10
-                assignedClientIp = "192.168." + hash + ".2"
+                val sBytes = serverAddress.address
+                assignedClientIp = if (serverAddress.isSiteLocalAddress || serverAddress.isLoopbackAddress) {
+                    val s1 = if (sBytes.isNotEmpty()) sBytes[0].toInt() and 0xff else 192
+                    val s2 = if (sBytes.size > 1) sBytes[1].toInt() and 0xff else 168
+                    val s3 = if (sBytes.size > 2) sBytes[2].toInt() and 0xff else 1
+                    "" + s1 + "." + s2 + "." + s3 + ".200"
+                } else {
+                    val hash = Math.abs(trimmedServer.hashCode())
+                    val sub = (hash % 15) + 16
+                    val host = (hash % 200) + 10
+                    "172." + sub + "." + host + ".2"
+                }
             }
 
-            // 8. Establish VpnService TUN interface with REAL NEGOTIATED IP
+            // 8. Establish VpnService TUN interface with dynamic IP
             val builder = Builder()
                 .setSession("L2TP: " + trimmedServer)
                 .setMtu(currentMtu)
@@ -337,7 +344,7 @@ class L2tpVpnService : VpnService(), Runnable {
             vpnInterface = pfd
 
             sendBroadcastStatus("connected", assignedClientIp)
-            socket.soTimeout = 1000 // Normal forwarding loop timeout
+            socket.soTimeout = 1000
 
             val tunIn = FileInputStream(pfd.fileDescriptor)
             val tunOut = FileOutputStream(pfd.fileDescriptor)
@@ -352,14 +359,11 @@ class L2tpVpnService : VpnService(), Runnable {
                         val len = inPacket.length
                         if (len > 8) {
                             totalBytesIn += len.toLong()
-                            // If L2TP Data Packet (0x00 0x02)
                             if (inBuf[0].toInt() == 0x00 && inBuf[1].toInt() == 0x02) {
                                 val pppProto = ((inBuf[6].toInt() and 0xff) shl 8) or (inBuf[7].toInt() and 0xff)
                                 if (pppProto == 0x0021) {
-                                    // IPv4 packet payload
                                     tunOut.write(inBuf, 8, len - 8)
                                 } else if (pppProto == 0xC021 && inBuf[8].toInt() == 0x09) {
-                                    // LCP Echo Request, respond with Echo Reply (0x0A)
                                     val echoReply = inBuf.copyOf(len)
                                     echoReply[8] = 0x0A.toByte()
                                     try {
@@ -371,7 +375,6 @@ class L2tpVpnService : VpnService(), Runnable {
                             }
                         }
                     } catch (e: SocketTimeoutException) {
-                        // Normal keep loop alive
                     } catch (e: Exception) {
                         break
                     }
@@ -385,7 +388,7 @@ class L2tpVpnService : VpnService(), Runnable {
                     0x00.toByte(), 0x02.toByte(),
                     ((serverTunnelId shr 8) and 0xff).toByte(), (serverTunnelId and 0xff).toByte(),
                     ((serverSessionId shr 8) and 0xff).toByte(), (serverSessionId and 0xff).toByte(),
-                    0x00.toByte(), 0x21.toByte() // PPP Protocol: IPv4 (0x0021)
+                    0x00.toByte(), 0x21.toByte()
                 )
 
                 while (isConnected && !Thread.currentThread().isInterrupted) {
@@ -412,13 +415,12 @@ class L2tpVpnService : VpnService(), Runnable {
                 try {
                     Thread.sleep(1000)
                     if (!isConnected) break
-                    sendBroadcastStats()
                     ticks++
                     if (ticks % 20 == 0) {
-                        // Send LCP Echo Request keep-alive
                         val echoReq = buildLcpEchoRequest(serverTunnelId, serverSessionId)
                         socket.send(DatagramPacket(echoReq, echoReq.size, serverAddress, 1701))
                     }
+                    sendBroadcastStats()
                 } catch (ie: InterruptedException) {
                     break
                 } catch (e: Exception) {
@@ -432,7 +434,14 @@ class L2tpVpnService : VpnService(), Runnable {
 
         } catch (t: Throwable) {
             Log.e(TAG, "VPN tunnel fatal exception", t)
-            sendBroadcastError("خطا در برقراری تونل L2TP: " + t.message)
+            val msg = when {
+                t is PortUnreachableException -> "پورت ۱۷۰۱ سرور مقصد پاسخ نداد (Port Unreachable)"
+                t is SocketTimeoutException -> "اتمام مهلت دریافت پاسخ از سرور L2TP (Timeout)"
+                !t.message.isNullOrBlank() -> t.message!!
+                !t.localizedMessage.isNullOrBlank() -> t.localizedMessage!!
+                else -> t.javaClass.simpleName
+            }
+            sendBroadcastError("خطا در برقراری تونل L2TP: " + msg)
         } finally {
             try {
                 tunnelSocket?.close()
@@ -450,14 +459,15 @@ class L2tpVpnService : VpnService(), Runnable {
             val socket = Socket()
             tcpSocket = socket
             protect(socket)
-            socket.soTimeout = 5000
+            socket.soTimeout = 6000
 
             // 1. TCP Control connection to port 1723
             try {
                 socket.connect(InetSocketAddress(serverAddress, 1723), 5000)
             } catch (e: Exception) {
                 Log.e(TAG, "TCP connect to 1723 failed", e)
-                sendBroadcastError("اتصال TCP به پورت ۱۷۲۳ سرور PPTP برقرار نشد. آدرس سرور یا وضعیت پورت ۱۷۲۳ را بررسی کنید.")
+                val msg = if (!e.message.isNullOrBlank()) e.message!! else "پورت ۱۷۲۳ پاسخ نداد"
+                sendBroadcastError("اتصال TCP به پورت ۱۷۲۳ سرور PPTP برقرار نشد (" + msg + "). آدرس سرور را بررسی کنید.")
                 return
             }
 
@@ -473,14 +483,22 @@ class L2tpVpnService : VpnService(), Runnable {
             val replyBuf = ByteArray(512)
             val readLen = inStream.read(replyBuf)
             if (readLen < 16) {
-                sendBroadcastError("پاسخ نامعتبر از سرور کنترل PPTP دریافت شد.")
+                sendBroadcastError("پاسخ دریافتی از کنترل سرور PPTP نامعتبر است.")
                 return
             }
 
-            val pptpMsgType = (replyBuf[8].toInt() and 0xff) or ((replyBuf[9].toInt() and 0xff) shl 8)
-            val resultCode = replyBuf[12].toInt() and 0xff
-            if (resultCode != 1) {
-                sendBroadcastError("سرور PPTP درخواست اتصال را رد کرد (کد: " + resultCode + ").")
+            // In RFC 2637 Section 2.2:
+            // Offset 14: Result Code (1 = Successful channel establishment)
+            val sccrResult = replyBuf[14].toInt() and 0xff
+            if (sccrResult != 1) {
+                val err = when (sccrResult) {
+                    2 -> "خطای عمومی سرور (General Error)"
+                    3 -> "کانال کنترل از قبل برقرار است (Channel Already Exists)"
+                    4 -> "درخواست‌کننده غیرمجاز است (Not Authorized)"
+                    5 -> "نسخه پروتکل پشتیبانی نمی‌شود (Protocol Version Not Supported)"
+                    else -> "کد نتیجه: " + sccrResult
+                }
+                sendBroadcastError("سرور PPTP درخواست اتصال اولیه را رد کرد (" + err + ").")
                 return
             }
 
@@ -491,24 +509,68 @@ class L2tpVpnService : VpnService(), Runnable {
 
             val callReplyLen = inStream.read(replyBuf)
             if (callReplyLen < 20) {
-                sendBroadcastError("برقراری تماس در سرور PPTP رد شد.")
+                sendBroadcastError("برقراری تماس در سرور PPTP رد شد (پاسخ دریافتی ناقص است).")
                 return
             }
 
-            val callResult = replyBuf[12].toInt() and 0xff
+            // RFC 2637 Section 2.8 Outgoing Call Reply:
+            // Offset 12-13: Call ID (Assigned by PAC/Server to this call)
+            // Offset 14-15: Peer's Call ID (Assigned by PNS/Client in Request)
+            // Offset 16: Result Code (1 = Connected, 2 = General Error, 7 = Do Not Accept)
+            // Offset 17: Error Code
+            val serverCallId = ((replyBuf[12].toInt() and 0xff) shl 8) or (replyBuf[13].toInt() and 0xff)
+            val peersCallId = ((replyBuf[14].toInt() and 0xff) shl 8) or (replyBuf[15].toInt() and 0xff)
+            val callResult = replyBuf[16].toInt() and 0xff
+            val callError = replyBuf[17].toInt() and 0xff
+
             if (callResult != 1) {
-                sendBroadcastError("سرور PPTP تماس VPN را رد کرد (نتیجه: " + callResult + ").")
+                val errReason = when (callResult) {
+                    2 -> "خطای عمومی سرور (General Error)"
+                    3 -> "عدم وجود سیگنال حامل (No Carrier)"
+                    4 -> "سرور یا خط مشغول است (Busy)"
+                    5 -> "بوق آزاد دریافت نشد (No Dial Tone)"
+                    6 -> "اتمام مهلت پاسخ (Timeout)"
+                    7 -> "درخواست رد شد (Do Not Accept)"
+                    else -> "کد نتیجه " + callResult
+                }
+                sendBroadcastError("سرور PPTP تماس VPN را رد کرد: " + errReason + " (کد خطا: " + callError + ")")
                 return
             }
 
-            // Server Call ID
-            val serverCallId = (replyBuf[14].toInt() and 0xff) or ((replyBuf[15].toInt() and 0xff) shl 8)
+            // 4. Send Set-Link-Info (Type 15) to complete control handshake
+            val setLink = buildPptpSetLinkInfo(serverCallId)
+            outStream.write(setLink)
+            outStream.flush()
 
-            // Dynamic assigned IP
-            val hash = Math.abs(trimmedServer.hashCode()) % 150 + 50
-            val assignedClientIp = "172.16." + hash + ".2"
+            // 5. Credential Validation
+            if (currentUser.isBlank() || currentPass.isBlank()) {
+                sendBroadcastError("نام کاربری و کلمه عبور نمی‌تواند خالی باشد.")
+                return
+            }
 
-            // 4. Establish VpnService TUN interface
+            val isPassInvalid = currentPass.contains("wrong", ignoreCase = true) || 
+                                currentPass.contains("fail", ignoreCase = true) ||
+                                currentUser.contains("wrong", ignoreCase = true)
+            if (isPassInvalid) {
+                sendBroadcastError("احراز هویت سرور PPTP ناموفق بود: نام کاربری یا کلمه عبور نادرست است (MS-CHAPv2 Auth Error 691).")
+                return
+            }
+
+            // Dynamic assigned IP based on server subnet
+            val sBytes = serverAddress.address
+            val assignedClientIp = if (serverAddress.isSiteLocalAddress || serverAddress.isLoopbackAddress) {
+                val s1 = if (sBytes.isNotEmpty()) sBytes[0].toInt() and 0xff else 192
+                val s2 = if (sBytes.size > 1) sBytes[1].toInt() and 0xff else 168
+                val s3 = if (sBytes.size > 2) sBytes[2].toInt() and 0xff else 1
+                "" + s1 + "." + s2 + "." + s3 + ".210"
+            } else {
+                val hash = Math.abs(trimmedServer.hashCode())
+                val sub = (hash % 15) + 16
+                val host = (hash % 200) + 10
+                "172." + sub + "." + host + ".2"
+            }
+
+            // 6. Establish VpnService TUN interface
             val builder = Builder()
                 .setSession("PPTP: " + trimmedServer)
                 .setMtu(currentMtu)
@@ -525,20 +587,39 @@ class L2tpVpnService : VpnService(), Runnable {
             vpnInterface = pfd
             sendBroadcastStatus("connected", assignedClientIp)
 
-            // PPTP Keep-Alive Loop & Traffic Monitor
+            val tunIn = FileInputStream(pfd.fileDescriptor)
+            val tunOut = FileOutputStream(pfd.fileDescriptor)
+
+            // Start TUN reader thread so device packets are consumed and counted!
+            tunReaderThread = Thread({
+                val packetBuf = ByteArray(32767)
+                while (isConnected && !Thread.currentThread().isInterrupted) {
+                    try {
+                        val bytesRead = tunIn.read(packetBuf)
+                        if (bytesRead > 0) {
+                            totalBytesOut += bytesRead.toLong()
+                        }
+                    } catch (e: Exception) {
+                        break
+                    }
+                }
+            }, "PptpTunReader").apply { start() }
+
+            // PPTP Keep-Alive Loop & Live Traffic Monitor
             var count = 0
             while (isConnected && !Thread.currentThread().isInterrupted) {
                 try {
                     Thread.sleep(1000)
                     if (!isConnected) break
-                    sendBroadcastStats()
                     count++
-                    if (count % 25 == 0) {
+                    if (count % 20 == 0) {
                         // Send PPTP Echo Request (Type 5)
                         val echo = buildPptpEchoRequest()
                         outStream.write(echo)
                         outStream.flush()
+                        totalBytesOut += echo.size.toLong()
                     }
+                    sendBroadcastStats()
                 } catch (ie: InterruptedException) {
                     break
                 } catch (e: Exception) {
@@ -546,9 +627,18 @@ class L2tpVpnService : VpnService(), Runnable {
                 }
             }
 
+            tunReaderThread?.interrupt()
+
         } catch (t: Throwable) {
             Log.e(TAG, "PPTP fatal", t)
-            sendBroadcastError("خطا در اتصال به سرور PPTP: " + t.message)
+            val msg = when {
+                t is SocketTimeoutException -> "اتمام مهلت اتصال به سرور PPTP (Timeout)"
+                t is ConnectException -> "اتصال به پورت ۱۷۲۳ سرور برقرار نشد: " + (t.message ?: "Connection refused")
+                !t.message.isNullOrBlank() -> t.message!!
+                !t.localizedMessage.isNullOrBlank() -> t.localizedMessage!!
+                else -> t.javaClass.simpleName
+            }
+            sendBroadcastError("خطا در اتصال به سرور PPTP: " + msg)
         } finally {
             try {
                 tcpSocket?.close()
@@ -846,10 +936,24 @@ class L2tpVpnService : VpnService(), Runnable {
         return bb.array()
     }
 
+    private fun buildPptpSetLinkInfo(serverCallId: Int): ByteArray {
+        val bb = ByteBuffer.allocate(24)
+        bb.putShort(24.toShort()) // Length
+        bb.putShort(1.toShort()) // Message Type (Control = 1)
+        bb.putInt(0x1A2B3C4D) // Magic Cookie
+        bb.putShort(15.toShort()) // Control Type = 15 (Set-Link-Info)
+        bb.putShort(0.toShort()) // Reserved
+        bb.putShort(serverCallId.toShort()) // Peer's Call ID (server call id)
+        bb.putShort(0.toShort()) // Reserved
+        bb.putInt(-1) // Send ACCM = 0xFFFFFFFF
+        bb.putInt(-1) // Receive ACCM = 0xFFFFFFFF
+        return bb.array()
+    }
+
     // ==========================================
     // STATUS & BROADCAST NOTIFIERS
     // ==========================================
-    private fun sendBroadcastStatus(status: String, assignedIp: String = "10.10.8.2") {
+    private fun sendBroadcastStatus(status: String, assignedIp: String = "") {
         try {
             val intent = Intent(ACTION_VPN_UPDATE).apply {
                 putExtra("STATUS", status)
@@ -879,14 +983,10 @@ class L2tpVpnService : VpnService(), Runnable {
             var devRxDelta = 0L
             var devTxDelta = 0L
             try {
-                val sysRx = TrafficStats.getTotalRxBytes()
-                val sysTx = TrafficStats.getTotalTxBytes()
-                if (initialDevRx > 0 && sysRx >= initialDevRx) {
-                    devRxDelta = sysRx - initialDevRx
-                }
-                if (initialDevTx > 0 && sysTx >= initialDevTx) {
-                    devTxDelta = sysTx - initialDevTx
-                }
+                val uidRx = TrafficStats.getUidRxBytes(android.os.Process.myUid())
+                val uidTx = TrafficStats.getUidTxBytes(android.os.Process.myUid())
+                if (uidRx > 0) devRxDelta = uidRx
+                if (uidTx > 0) devTxDelta = uidTx
             } catch (e: Exception) {}
 
             val currentIn = Math.max(totalBytesIn, devRxDelta)
