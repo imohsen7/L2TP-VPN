@@ -30,6 +30,8 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.nio.ByteBuffer
 import java.util.Random
+import java.security.MessageDigest
+import java.nio.charset.StandardCharsets
 
 class L2tpVpnService : VpnService(), Runnable {
 
@@ -417,9 +419,7 @@ class L2tpVpnService : VpnService(), Runnable {
 
             // Validate assigned IP: NEVER assign fake 172.x.x.x!
             if (assignedClientIp.isEmpty()) {
-                sendBroadcastError("عدم دریافت آدرس آی‌پی (IPCP) از سرور L2TP میکروتیک. لطفاً در میکروتیک این دو مورد را بررسی فرمایید:
-۱. دستور: /interface l2tp-server server set use-ipsec=no authentication=pap,chap,mschap1,mschap2
-۲. تعریف local-address و remote-address یا IP Pool در /ppp profile")
+                sendBroadcastError("عدم دریافت آدرس آی‌پی (IPCP) از سرور L2TP میکروتیک. لطفاً use-ipsec=no و تنظیمات IP Pool در میکروتیک را بررسی فرمایید.")
                 return
             }
 
@@ -949,7 +949,7 @@ class L2tpVpnService : VpnService(), Runnable {
             try {
                 val md = MessageDigest.getInstance("MD5")
                 md.update(3.toByte()) // Message Type for SCCCN
-                md.update(secret.toByteArray(Charsets.UTF_8))
+                md.update(secret.toByteArray(StandardCharsets.UTF_8))
                 md.update(challenge)
                 val resp = md.digest()
                 val len = 6 + resp.size
@@ -976,11 +976,11 @@ class L2tpVpnService : VpnService(), Runnable {
     private fun buildChapResponse(tunnelId: Int, sessionId: Int, chapId: Int, user: String, pass: String, challenge: ByteArray): ByteArray {
         val md = MessageDigest.getInstance("MD5")
         md.update(chapId.toByte())
-        md.update(pass.toByteArray(Charsets.UTF_8))
+        md.update(pass.toByteArray(StandardCharsets.UTF_8))
         md.update(challenge)
         val respVal = md.digest() // 16 bytes
 
-        val uBytes = user.toByteArray(Charsets.UTF_8)
+        val uBytes = user.toByteArray(StandardCharsets.UTF_8)
         val valSize = respVal.size
         val pppLen = 4 + 1 + valSize + uBytes.size
         val bb = ByteBuffer.allocate(8 + pppLen)
@@ -1225,7 +1225,7 @@ class L2tpVpnService : VpnService(), Runnable {
                     errCode = ((buf[idx + 8].toInt() and 0xff) shl 8) or (buf[idx + 9].toInt() and 0xff)
                 }
                 if (avpLen > 10) {
-                    errMsg = String(buf, idx + 10, avpLen - 10, Charsets.UTF_8)
+                    errMsg = String(buf, idx + 10, avpLen - 10, StandardCharsets.UTF_8)
                 }
             }
             idx += avpLen
