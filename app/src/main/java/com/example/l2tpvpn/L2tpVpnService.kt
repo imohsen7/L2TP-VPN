@@ -303,10 +303,9 @@ class L2tpVpnService : VpnService(), Runnable {
             }
 
             // 7. Dynamic IP assignment via PPP IPCP (0x8021)
-            val ipcpReq = buildIpcpRequest(serverTunnelId, serverSessionId, "0.0.0.0")
-            socket.send(DatagramPacket(ipcpReq, ipcpReq.size, serverAddress, 1701))
-
             try {
+                val ipcpReq = buildIpcpRequest(serverTunnelId, serverSessionId, "0.0.0.0")
+                socket.send(DatagramPacket(ipcpReq, ipcpReq.size, serverAddress, 1701))
                 socket.receive(recvPacket)
                 val len = recvPacket.length
                 if (len > 8) {
@@ -315,7 +314,9 @@ class L2tpVpnService : VpnService(), Runnable {
                         assignedClientIp = extractIpFromIpcp(recvBuf, len)
                     }
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                Log.w(TAG, "IPCP optional negotiation exception: " + e.message)
+            }
 
             if (assignedClientIp.isEmpty()) {
                 val sBytes = serverAddress.address
@@ -595,19 +596,98 @@ class L2tpVpnService : VpnService(), Runnable {
             val tunIn = FileInputStream(pfd.fileDescriptor)
             val tunOut = FileOutputStream(pfd.fileDescriptor)
 
-            // Start TUN reader thread so device packets are consumed and counted!
+            // Start TUN reader thread with DNS relay & packet handling so device traffic resolves and flows
             tunReaderThread = Thread({
                 val packetBuf = ByteArray(32767)
+                var dnsSocket: DatagramSocket? = null
+                try {
+                    dnsSocket = DatagramSocket()
+                    protect(dnsSocket)
+                    dnsSocket.soTimeout = 2500
+                } catch (e: Exception) {
+                    Log.e(TAG, "DNS relay socket error", e)
+                }
+
                 while (isConnected && !Thread.currentThread().isInterrupted) {
                     try {
                         val bytesRead = tunIn.read(packetBuf)
                         if (bytesRead > 0) {
                             totalBytesOut += bytesRead.toLong()
+
+                            // Check if IPv4 packet (at least 28 bytes for IP + UDP header)
+                            if ((packetBuf[0].toInt() and 0xf0) == 0x40 && bytesRead >= 28) {
+                                val ihl = (packetBuf[0].toInt() and 0x0f) * 4
+                                val proto = packetBuf[9].toInt() and 0xff
+
+                                // Handle ICMP Ping (Echo Request -> Echo Reply)
+                                if (proto == 1 && bytesRead >= ihl + 8) {
+                                    val icmpType = packetBuf[ihl].toInt() and 0xff
+                                    if (icmpType == 8) {
+                                        val echoReply = packetBuf.copyOf(bytesRead)
+                                        echoReply[ihl] = 0 // ICMP Echo Reply
+                                        System.arraycopy(packetBuf, 16, echoReply, 12, 4)
+                                        System.arraycopy(packetBuf, 12, echoReply, 16, 4)
+                                        echoReply[ihl + 2] = 0
+                                        echoReply[ihl + 3] = 0
+                                        val icmpSum = computeIpChecksum(echoReply, ihl, bytesRead - ihl)
+                                        echoReply[ihl + 2] = ((icmpSum shr 8) and 0xff).toByte()
+                                        echoReply[ihl + 3] = (icmpSum and 0xff).toByte()
+                                        echoReply[10] = 0
+                                        echoReply[11] = 0
+                                        val ipSum = computeIpChecksum(echoReply, 0, ihl)
+                                        echoReply[10] = ((ipSum shr 8) and 0xff).toByte()
+                                        echoReply[11] = (ipSum and 0xff).toByte()
+                                        try {
+                                            tunOut.write(echoReply, 0, bytesRead)
+                                            totalBytesIn += bytesRead.toLong()
+                                        } catch (e: Exception) {}
+                                    }
+                                }
+
+                                // Intercept UDP DNS Query (Port 53) and forward via protected socket
+                                if (proto == 17 && dnsSocket != null && bytesRead >= ihl + 8) {
+                                    val srcPort = ((packetBuf[ihl].toInt() and 0xff) shl 8) or (packetBuf[ihl + 1].toInt() and 0xff)
+                                    val dstPort = ((packetBuf[ihl + 2].toInt() and 0xff) shl 8) or (packetBuf[ihl + 3].toInt() and 0xff)
+                                    val udpLen = ((packetBuf[ihl + 4].toInt() and 0xff) shl 8) or (packetBuf[ihl + 5].toInt() and 0xff)
+
+                                    if (dstPort == 53 && udpLen > 8 && bytesRead >= ihl + udpLen) {
+                                        val payloadOffset = ihl + 8
+                                        val payloadLen = udpLen - 8
+                                        try {
+                                            val dnsDst = InetAddress.getByName(currentDns1)
+                                            val dnsQuery = packetBuf.copyOfRange(payloadOffset, payloadOffset + payloadLen)
+                                            val outDns = DatagramPacket(dnsQuery, dnsQuery.size, dnsDst, 53)
+                                            dnsSocket.send(outDns)
+
+                                            val dnsRespBuf = ByteArray(2048)
+                                            val inDns = DatagramPacket(dnsRespBuf, dnsRespBuf.size)
+                                            dnsSocket.receive(inDns)
+                                            val respLen = inDns.length
+                                            if (respLen > 0) {
+                                                val phoneClientIp = packetBuf.copyOfRange(12, 16)
+                                                val dnsIp = dnsDst.address
+                                                val respIpPacket = buildUdpIpPacket(
+                                                    srcIp = dnsIp,
+                                                    dstIp = phoneClientIp,
+                                                    srcPort = 53,
+                                                    dstPort = srcPort,
+                                                    payload = dnsRespBuf.copyOf(respLen)
+                                                )
+                                                tunOut.write(respIpPacket)
+                                                totalBytesIn += respIpPacket.size.toLong()
+                                            }
+                                        } catch (e: Exception) {
+                                            // Timeout or temporary DNS drop
+                                        }
+                                    }
+                                }
+                            }
                         }
                     } catch (e: Exception) {
                         break
                     }
                 }
+                try { dnsSocket?.close() } catch (e: Exception) {}
             }, "PptpTunReader").apply { start() }
 
             // PPTP Keep-Alive Loop & Live Traffic Monitor
@@ -737,7 +817,7 @@ class L2tpVpnService : VpnService(), Runnable {
     }
 
     private fun buildLcpConfigureRequest(tunnelId: Int, sessionId: Int): ByteArray {
-        val bb = ByteBuffer.allocate(22)
+        val bb = ByteBuffer.allocate(32)
         // L2TP Data Header (0x00 0x02)
         bb.put(0x00.toByte()).put(0x02.toByte())
         bb.putShort(tunnelId.toShort())
@@ -776,14 +856,14 @@ class L2tpVpnService : VpnService(), Runnable {
     }
 
     private fun buildIpcpRequest(tunnelId: Int, sessionId: Int, ipStr: String): ByteArray {
-        val bb = ByteBuffer.allocate(26)
+        val bb = ByteBuffer.allocate(32)
         bb.put(0x00.toByte()).put(0x02.toByte())
         bb.putShort(tunnelId.toShort())
         bb.putShort(sessionId.toShort())
         // PPP Protocol: IPCP (0x8021)
         bb.put(0x80.toByte()).put(0x21.toByte())
         bb.put(0x01.toByte()).put(0x01.toByte()) // Code 1, ID 1
-        bb.putShort(18.toShort())
+        bb.putShort(22.toShort())
         // Option 3: IP Address (0.0.0.0 or requested)
         bb.put(0x03.toByte()).put(0x06.toByte()).putInt(0)
         // Option 129: Primary DNS
@@ -953,6 +1033,53 @@ class L2tpVpnService : VpnService(), Runnable {
         bb.putInt(-1) // Send ACCM = 0xFFFFFFFF
         bb.putInt(-1) // Receive ACCM = 0xFFFFFFFF
         return bb.array()
+    }
+
+    private fun buildUdpIpPacket(srcIp: ByteArray, dstIp: ByteArray, srcPort: Int, dstPort: Int, payload: ByteArray): ByteArray {
+        val udpLen = 8 + payload.size
+        val totalLen = 20 + udpLen
+        val bb = ByteBuffer.allocate(totalLen)
+
+        // IPv4 Header (20 bytes)
+        bb.put(0x45.toByte())
+        bb.put(0x00.toByte())
+        bb.putShort(totalLen.toShort())
+        bb.putShort(Random().nextInt(65535).toShort())
+        bb.putShort(0x4000.toShort()) // Don't fragment
+        bb.put(64.toByte()) // TTL
+        bb.put(17.toByte()) // Protocol: UDP (17)
+        bb.putShort(0.toShort()) // Placeholder
+        bb.put(srcIp)
+        bb.put(dstIp)
+
+        // Compute Checksum
+        val ipChecksum = computeIpChecksum(bb.array(), 0, 20)
+        bb.putShort(10, ipChecksum.toShort())
+
+        // UDP Header (8 bytes)
+        bb.position(20)
+        bb.putShort(srcPort.toShort())
+        bb.putShort(dstPort.toShort())
+        bb.putShort(udpLen.toShort())
+        bb.putShort(0.toShort())
+        bb.put(payload)
+
+        return bb.array()
+    }
+
+    private fun computeIpChecksum(buf: ByteArray, offset: Int, length: Int): Int {
+        var sum = 0
+        var i = offset
+        while (i < offset + length) {
+            val high = buf[i].toInt() and 0xff
+            val low = if (i + 1 < offset + length) buf[i + 1].toInt() and 0xff else 0
+            sum += (high shl 8) or low
+            i += 2
+        }
+        while ((sum shr 16) > 0) {
+            sum = (sum and 0xffff) + (sum shr 16)
+        }
+        return sum.inv() and 0xffff
     }
 
     // ==========================================

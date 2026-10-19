@@ -663,7 +663,7 @@
         </svg>
       </div>
       <div>
-        <div class="brand-title">L2TP VPN Client</div>
+        <div class="brand-title" id="top-brand-title">L2TP VPN Client</div>
         <div class="brand-subtitle">Android 7+ &amp; iOS Support</div>
       </div>
     </div>
@@ -679,7 +679,6 @@
 
   <!-- Main View Area -->
   <main>
-
     <!-- Tab 1: Dashboard -->
     <div class="tab-content active" id="tab-dashboard">
       
@@ -688,8 +687,11 @@
         <div class="server-info">
           <div class="server-flag" id="dash-flag">🇩🇪</div>
           <div>
-            <div class="server-name" id="dash-server-name">آلمان - فرانکفورت (L2TP/PPTP)</div>
-            <div class="server-host" id="dash-server-host">de.vpn-server.net</div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="server-name" id="dash-server-name">آلمان - فرانکفورت (L2TP/PPTP)</span>
+              <span id="dash-proto-badge" style="font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 6px; background: rgba(96, 165, 250, 0.15); color: #60a5fa;">L2TP</span>
+            </div>
+            <div class="server-host" id="dash-server-host">de-fra1.l2tp-vpn.net</div>
           </div>
         </div>
         <div class="server-badge">
@@ -717,6 +719,7 @@
         <div class="connection-status-label" id="connection-status-text">
           <span style="color: var(--text-muted);">آماده اتصال به سرور L2TP</span>
         </div>
+
         <div class="connection-duration-label" id="connection-duration-text">
           مدت اتصال: ۰۰:۰۰:۰۰
         </div>
@@ -754,16 +757,27 @@
             <circle cx="12" cy="12" r="10"/>
             <line x1="2" y1="12" x2="22" y2="12"/>
           </svg>
-          مشخصات تونل مجازی L2TP / IPSec
+          <span id="dash-tunnel-title">مشخصات تونل مجازی L2TP / IPSec</span>
         </div>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px; margin-top: 10px;">
           <div><span style="color: var(--text-muted);">آی‌پی مجازی:</span> <strong id="val-ip" style="direction: ltr; display: inline-block;">---</strong></div>
-          <div><span style="color: var(--text-muted);">پروتکل:</span> <strong>L2TP / IPSec PSK</strong></div>
+          <div><span style="color: var(--text-muted);">پروتکل:</span> <strong id="val-proto">L2TP / IPSec PSK</strong></div>
           <div><span style="color: var(--text-muted);">DNS فعال:</span> <strong id="val-dns">1.1.1.1</strong></div>
           <div><span style="color: var(--text-muted);">MTU بسته:</span> <strong id="val-mtu">1400</strong></div>
         </div>
       </div>
 
+      <!-- Security & Protocol Banner Callout -->
+      <div class="card" id="dash-security-banner" style="margin-top: 14px; background: rgba(99, 102, 241, 0.08); border-color: rgba(99, 102, 241, 0.2); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 11px;">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="color: #818cf8; flex-shrink: 0;">
+            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+          </svg>
+          <span id="dash-security-text">
+            رمزنگاری فعال: <strong>AES-256-CBC / SHA256</strong> (L2TP/IPSec)
+          </span>
+        </div>
+      </div>
     </div>
 
     <!-- Tab 2: Configuration & Multiple Profiles (LIST-FIRST ARCHITECTURE) -->
@@ -1100,7 +1114,7 @@
   <div class="modal-backdrop" id="modal-profiles" onclick="closeProfilesModal(event)">
     <div class="modal-sheet" onclick="event.stopPropagation()">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
-        <h3 style="font-size: 15px; font-weight: 800;">انتخاب سرور L2TP</h3>
+        <h3 style="font-size: 15px; font-weight: 800;" id="modal-server-title">انتخاب سرور VPN (L2TP / PPTP)</h3>
         <button class="btn-icon" onclick="closeProfilesModal()">✕</button>
       </div>
       <div id="modal-profiles-list">
@@ -1118,10 +1132,11 @@
       {
         id: 'p-de',
         name: 'آلمان - فرانکفورت (L2TP/IPSec)',
-        server: 'de.vpn-server.net',
-        psk: 'vpnsecret123',
-        username: 'vpnuser',
-        password: 'securepassword',
+        protocol: 'l2tp',
+        server: 'de-fra1.l2tp-vpn.net',
+        psk: 'vpnsecret2026',
+        username: 'vpnuser_de',
+        password: 'password123',
         dnsPrimary: '1.1.1.1',
         dnsSecondary: '8.8.8.8',
         mtu: 1400,
@@ -1129,8 +1144,23 @@
         countryCode: 'DE'
       },
       {
+        id: 'p-pptp',
+        name: 'سرور سریع (PPTP)',
+        protocol: 'pptp',
+        server: 'pptp.vpn-server.net',
+        psk: '',
+        username: 'pptp_user',
+        password: 'password123',
+        dnsPrimary: '1.1.1.1',
+        dnsSecondary: '8.8.8.8',
+        mtu: 1400,
+        routeAllTraffic: true,
+        countryCode: '⚡'
+      },
+      {
         id: 'p-nl',
         name: 'هلند - آمستردام (L2TP/IPSec)',
+        protocol: 'l2tp',
         server: 'nl-ams.l2tp-vpn.net',
         psk: 'vpnsecret2026',
         username: 'vpnuser_nl',
@@ -1144,6 +1174,7 @@
       {
         id: 'p-fi',
         name: 'فنلاند - هلسینکی (L2TP/IPSec)',
+        protocol: 'l2tp',
         server: 'fi-hel.l2tp-vpn.net',
         psk: 'vpnsecret2026',
         username: 'vpnuser_fi',
@@ -1429,24 +1460,68 @@
     }
 
     function updateDashboardProfileInfo() {
-      document.getElementById('dash-server-name').innerText = activeProfile.name;
-      document.getElementById('dash-server-host').innerText = activeProfile.server;
-      document.getElementById('val-dns').innerText = activeProfile.dnsPrimary || '1.1.1.1';
-      document.getElementById('val-mtu').innerText = activeProfile.mtu || 1400;
+      const isPptp = (activeProfile.protocol === 'pptp');
+      const protoName = isPptp ? 'PPTP' : 'L2TP';
+      const protoFull = isPptp ? 'PPTP (Point-to-Point)' : 'L2TP / IPSec PSK';
+
+      const sName = document.getElementById('dash-server-name');
+      const sHost = document.getElementById('dash-server-host');
+      const sDns = document.getElementById('val-dns');
+      const sMtu = document.getElementById('val-mtu');
+      const sTitle = document.getElementById('dash-tunnel-title');
+      const sProto = document.getElementById('val-proto');
+      const sBadge = document.getElementById('dash-proto-badge');
+      const sFlag = document.getElementById('dash-flag');
+
+      if (sName) sName.innerText = activeProfile.name;
+      if (sHost) sHost.innerText = activeProfile.server;
+      if (sDns) sDns.innerText = activeProfile.dnsPrimary || '1.1.1.1';
+      if (sMtu) sMtu.innerText = activeProfile.mtu || 1400;
+
+      if (sTitle) sTitle.innerText = 'مشخصات تونل مجازی ' + (isPptp ? 'PPTP' : 'L2TP / IPSec');
+      if (sProto) sProto.innerText = protoFull;
+
+      if (sBadge) {
+        sBadge.innerText = protoName;
+        sBadge.style.color = isPptp ? '#10b981' : '#60a5fa';
+        sBadge.style.background = isPptp ? 'rgba(16, 185, 129, 0.15)' : 'rgba(96, 165, 250, 0.15)';
+      }
+
+      if (sFlag) {
+        const flag = activeProfile.countryCode === 'DE' ? '🇩🇪' : activeProfile.countryCode === 'NL' ? '🇳🇱' : activeProfile.countryCode === 'FI' ? '🇫🇮' : (isPptp ? '⚡' : '🌐');
+        sFlag.innerText = flag;
+      }
+
+      const sBrand = document.getElementById('top-brand-title');
+      if (sBrand) sBrand.innerText = isPptp ? 'PPTP VPN Client' : 'L2TP VPN Client';
+      const sSec = document.getElementById('dash-security-text');
+      if (sSec) {
+        sSec.innerHTML = isPptp ? 
+          'پروتکل فعال: <strong>PPTP / MS-CHAPv2</strong> (پروتکل تونل نقطه‌به‌نقطه)' : 
+          'رمزنگاری فعال: <strong>AES-256-CBC / SHA256</strong> (L2TP/IPSec)';
+      }
+
+      updateUIState();
     }
 
     // --- Modal for Quick Switch ---
     function openProfilesModal() {
       const modalList = document.getElementById('modal-profiles-list');
-      modalList.innerHTML = profiles.map(p => `
+      modalList.innerHTML = profiles.map(p => {
+        const isP = p.protocol === 'pptp';
+        return `
         <div class="server-card" onclick="selectActiveProfile('${p.id}'); closeProfilesModal();" style="margin-bottom: 8px;">
           <div class="server-info">
-            <div class="server-name">${escapeHtml(p.name)}</div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span class="server-name">${escapeHtml(p.name)}</span>
+              <span style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; color: ${isP ? '#10b981' : '#60a5fa'}; background: ${isP ? 'rgba(16,185,129,0.15)' : 'rgba(96,165,250,0.15)'};">${isP ? 'PPTP' : 'L2TP'}</span>
+            </div>
             <div class="server-host">${escapeHtml(p.server)}</div>
           </div>
           ${p.id === activeProfile.id ? '<span style="color: #10b981; font-weight: bold;">✓ فعال</span>' : ''}
         </div>
-      `).join('');
+      `;
+      }).join('');
       document.getElementById('modal-profiles').classList.add('show');
     }
 
@@ -1795,21 +1870,24 @@
       const pulseRing = document.getElementById('pulse-ring');
       const spinRing = document.getElementById('spin-ring');
 
+      const isPptp = (activeProfile.protocol === 'pptp');
+      const protoName = isPptp ? 'PPTP' : 'L2TP';
+
       btn.className = 'connect-btn ' + connectionState;
 
       if (connectionState === 'connected') {
         btnText.innerText = 'قطع اتصال';
-        statusLabel.innerHTML = '<span style="color: #34d399; font-weight: bold;">متصل به تونل L2TP</span>';
+        statusLabel.innerHTML = '<span style="color: #34d399; font-weight: bold;">متصل به تونل ' + protoName + '</span>';
         pulseRing.style.display = 'block';
         spinRing.style.display = 'none';
       } else if (connectionState === 'connecting') {
         btnText.innerText = 'اتصال...';
-        statusLabel.innerHTML = '<span style="color: #fbbf24;">در حال برقراری تبادل کلید L2TP...</span>';
+        statusLabel.innerHTML = '<span style="color: #fbbf24;">در حال برقراری اتصال ' + protoName + '...</span>';
         pulseRing.style.display = 'none';
         spinRing.style.display = 'block';
       } else {
         btnText.innerText = 'اتصال';
-        statusLabel.innerHTML = '<span style="color: var(--text-muted);">آماده اتصال به سرور L2TP</span>';
+        statusLabel.innerHTML = '<span style="color: var(--text-muted);">آماده اتصال به سرور ' + protoName + '</span>';
         pulseRing.style.display = 'none';
         spinRing.style.display = 'none';
         document.getElementById('val-ip').innerText = '---';
@@ -1873,7 +1951,7 @@
     // Init
     updateDashboardProfileInfo();
     renderProfilesList();
-    addLog('کلاینت L2TP آماده اتصال است.', 'info');
+    addLog('کلاینت ' + (activeProfile.protocol === 'pptp' ? 'PPTP' : 'L2TP') + ' آماده اتصال است.', 'info');
   </script>
 </body>
 </html>

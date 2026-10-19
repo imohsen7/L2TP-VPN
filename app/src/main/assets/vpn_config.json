@@ -1,15 +1,14 @@
 {
-  "id": "default",
+  "id": "p-de",
   "name": "آلمان - فرانکفورت (L2TP/PPTP)",
-  "server": "de.vpn-server.net",
+  "server": "de-fra1.l2tp-vpn.net",
+  "psk": "vpnsecret2026",
+  "username": "vpnuser_de",
+  "password": "password123",
   "protocol": "l2tp",
-  "psk": "vpnsecret123",
-  "username": "vpnuser",
-  "password": "securepassword",
   "dnsPrimary": "1.1.1.1",
   "dnsSecondary": "8.8.8.8",
   "mtu": 1400,
   "routeAllTraffic": true,
-  "countryCode": "DE",
-  "countryName": "Germany"
+  "countryCode": "DE"
 }
