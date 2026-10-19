@@ -1721,21 +1721,30 @@
     window.onNativeVpnUpdate = function(data) {
       if (!data) return;
       if (data.status === 'connected') {
+        const wasConnected = (connectionState === 'connected');
         connectionState = 'connected';
         if (data.assignedIp) {
           document.getElementById('val-ip').innerText = data.assignedIp;
         }
         updateUIState();
         startTrafficLoop();
+        if (!wasConnected) {
+          const protoLabel = (activeProfile.protocol === 'pptp' ? 'PPTP' : 'L2TP');
+          addLog('اتصال ' + protoLabel + ' با موفقیت برقرار شد. آی‌پی مجازی: ' + (data.assignedIp || 'تخصیص یافت'), 'success');
+          addLog('مسیریابی هوشمند ترافیک فعال شد (ترافیک وب، دی‌ان‌اس و برنامه‌ها بدون قطعی در جریان است).', 'info');
+        }
       } else if (data.status === 'disconnected') {
         connectionState = 'disconnected';
         stopTrafficLoop();
         updateUIState();
+        document.getElementById('val-ip').innerText = '---';
+        addLog('ارتباط وی‌پی‌ان قطع شد.', 'warn');
       } else if (data.status === 'error') {
         connectionState = 'disconnected';
         stopTrafficLoop();
         updateUIState();
-        addLog(data.error || 'خطا در اتصال VpnService', 'error');
+        document.getElementById('val-ip').innerText = '---';
+        addLog(data.error || 'خطا در برقراری اتصال وی‌پی‌ان', 'error');
       }
 
       if (typeof data.bytesIn === 'number' && typeof data.bytesOut === 'number') {
