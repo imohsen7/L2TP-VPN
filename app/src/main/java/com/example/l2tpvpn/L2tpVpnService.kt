@@ -199,6 +199,9 @@ class L2tpVpnService : VpnService(), Runnable {
             var serverTunnelId = 0
             var serverSessionId = 0
             var assignedClientIp = ""
+            var serverChallenge: ByteArray? = null
+
+            sendBroadcastLog("ارسال پیام شروع اتصال L2TP (SCCRQ) به پورت ۱۷۰۱...")
 
             // 1. L2TP SCCRQ Handshake (Start-Control-Connection-Request)
             val sccrq = buildL2tpSccrq(tunnelId = 0, sessionId = 0, ns = 0, nr = 0)
@@ -208,16 +211,28 @@ class L2tpVpnService : VpnService(), Runnable {
             val recvBuf = ByteArray(4096)
             val recvPacket = DatagramPacket(recvBuf, recvBuf.size)
 
-            // Try sending SCCRQ with up to 3 retries
             for (attempt in 1..3) {
                 try {
                     socket.send(sendPacket)
                     socket.receive(recvPacket)
                     val len = recvPacket.length
                     if (len >= 12 && (recvBuf[0].toInt() and 0x80) != 0) {
-                        serverTunnelId = parseAssignedTunnelId(recvBuf, len)
-                        sccrpReceived = true
-                        break
+                        val msgType = parseL2tpMessageType(recvBuf, len)
+                        Log.d(TAG, "L2TP response msgType: , len: ")
+                        if (msgType == 2) { // SCCRP
+                            val tunnelId = parseAssignedTunnelId(recvBuf, len)
+                            if (tunnelId > 0) {
+                                serverTunnelId = tunnelId
+                                serverChallenge = parseChallenge(recvBuf, len)
+                                sccrpReceived = true
+                                sendBroadcastLog("پاسخ سرور L2TP دریافت شد (SCCRP تایید شد، Tunnel ID: ).")
+                                break
+                            }
+                        } else if (msgType == 4) { // StopCCN
+                            val stopErr = parseStopCcnError(recvBuf, len)
+                            sendBroadcastError("سرور میکروتیک ارتباط را بست (StopCCN): . دستور: /interface l2tp-server server set use-ipsec=no")
+                            return
+                        }
                     }
                 } catch (ste: SocketTimeoutException) {
                     Log.w(TAG, "SCCRQ timeout attempt ")
@@ -229,17 +244,19 @@ class L2tpVpnService : VpnService(), Runnable {
             }
 
             if (!sccrpReceived || serverTunnelId == 0) {
-                sendBroadcastError("پاسخی از پورت ۱۷۰۱ سرور L2TP دریافت نشد. در صورت استفاده از میکروتیک، بررسی کنید use-ipsec=no باشد و فایروال پورت ۱۷۰۱ باز باشد.")
+                sendBroadcastError("پاسخی از پورت ۱۷۰۱ سرور L2TP دریافت نشد (Timeout). روی میکروتیک بررسی فرمایید که use-ipsec=no باشد و فایروال پورت ۱۷۰۱ باز باشد.")
                 return
             }
 
-            // 2. Send SCCCN (Start-Control-Connection-Connected)
-            val scccn = buildL2tpScccn(serverTunnelId, ns = 1, nr = 1)
+            // 2. Send SCCCN (Start-Control-Connection-Connected with challenge response if present)
+            val scccn = buildL2tpScccn(serverTunnelId, ns = 1, nr = 1, secret = currentPsk, challenge = serverChallenge)
             socket.send(DatagramPacket(scccn, scccn.size, serverAddress, 1701))
+            sendBroadcastLog("تاییدیه تونل ارسال شد (SCCCN).")
 
             // 3. Send ICRQ (Incoming-Call-Request with mandatory Bearer Type AVP 18)
             val icrq = buildL2tpIcrq(serverTunnelId, sessionId = 0, ns = 2, nr = 1)
             socket.send(DatagramPacket(icrq, icrq.size, serverAddress, 1701))
+            sendBroadcastLog("درخواست برقراری نشست ارسال شد (ICRQ)... ")
 
             // 4. Wait for ICRP (Incoming-Call-Reply)
             var icrpReceived = false
@@ -248,11 +265,21 @@ class L2tpVpnService : VpnService(), Runnable {
                     socket.receive(recvPacket)
                     val len = recvPacket.length
                     if (len >= 12 && (recvBuf[0].toInt() and 0x80) != 0) {
-                        val parsedSession = parseAssignedSessionId(recvBuf, len)
-                        if (parsedSession > 0) {
-                            serverSessionId = parsedSession
-                            icrpReceived = true
-                            break
+                        val msgType = parseL2tpMessageType(recvBuf, len)
+                        if (msgType == 11) { // ICRP
+                            val sessId = parseAssignedSessionId(recvBuf, len)
+                            if (sessId > 0) {
+                                serverSessionId = sessId
+                                icrpReceived = true
+                                sendBroadcastLog("نشست L2TP تایید شد (ICRP دریافت شد، Session ID: ).")
+                                break
+                            }
+                        } else if (msgType == 14) { // CDN
+                            sendBroadcastError("سرور میکروتیک تماس را رد کرد (CDN).")
+                            return
+                        } else if (msgType == 4) { // StopCCN
+                            sendBroadcastError("سرور میکروتیک تونل را بست (StopCCN).")
+                            return
                         }
                     }
                 } catch (e: Exception) {
@@ -261,78 +288,128 @@ class L2tpVpnService : VpnService(), Runnable {
             }
 
             if (!icrpReceived || serverSessionId == 0) {
-                sendBroadcastError("برقراری نشست L2TP (ICRP) از سمت سرور میکروتیک تایید نشد. وضعیت L2TP Server را بررسی کنید.")
+                sendBroadcastError("پاسخی برای نشست L2TP (ICRP) از سرور دریافت نشد. لطفاً در میکروتیک بررسی فرمایید که L2TP Server فعال باشد.")
                 return
             }
 
             // 5. Send ICCN (Incoming-Call-Connected)
             val iccn = buildL2tpIccn(serverTunnelId, serverSessionId, ns = 3, nr = 2)
             socket.send(DatagramPacket(iccn, iccn.size, serverAddress, 1701))
+            sendBroadcastLog("نشست کامل شد (ICCN). شروع تبادل پروتکل PPP...")
 
-            // 6. PPP Link & Authentication over L2TP Data Packets
+            // 6. PPP Link & Authentication
             val lcpReq = buildLcpConfigureRequest(serverTunnelId, serverSessionId)
             socket.send(DatagramPacket(lcpReq, lcpReq.size, serverAddress, 1701))
 
-            // Read server LCP reply and send Configure-Ack
-            for (i in 0..3) {
-                try {
-                    socket.receive(recvPacket)
-                    val len = recvPacket.length
-                    if (len > 8) {
-                        val pppProto = ((recvBuf[6].toInt() and 0xff) shl 8) or (recvBuf[7].toInt() and 0xff)
-                        if (pppProto == 0xC021) {
-                            val code = recvBuf[8].toInt() and 0xff
-                            if (code == 0x01) { // Server Configure-Request -> Send Ack
-                                val ack = recvBuf.copyOf(len)
-                                ack[8] = 0x02.toByte()
-                                socket.send(DatagramPacket(ack, len, serverAddress, 1701))
-                            }
-                        }
-                    }
-                } catch (e: Exception) {}
-            }
-
-            // Authenticate with Username & Password (PAP)
-            if (currentUser.isNotEmpty()) {
-                val papReq = buildPapAuthRequest(serverTunnelId, serverSessionId, currentUser, currentPass)
-                socket.send(DatagramPacket(papReq, papReq.size, serverAddress, 1701))
+            // Read server LCP reply and send Configure-Ack / Handle Auth
+            var authDone = false
+            for (i in 0..6) {
                 try {
                     socket.receive(recvPacket)
                     val len = recvPacket.length
                     if (len > 8) {
                         val pppProto = ((recvBuf[6].toInt() and 0xff) shl 8) or (recvBuf[7].toInt() and 0xff)
                         val code = recvBuf[8].toInt() and 0xff
-                        if (pppProto == 0xC023 && code == 0x03) {
-                            sendBroadcastError("احراز هویت سرور L2TP ناموفق بود: نام کاربری یا رمز عبور در سرور میکروتیک پذیرفته نشد.")
-                            return
+                        val id = recvBuf[9].toInt() and 0xff
+
+                        if (pppProto == 0xC021) { // LCP
+                            if (code == 0x01) { // Server Configure-Request -> Send Ack
+                                val ack = recvBuf.copyOf(len)
+                                ack[8] = 0x02.toByte()
+                                socket.send(DatagramPacket(ack, len, serverAddress, 1701))
+                                sendBroadcastLog("پاسخ پیکربندی LCP سرور تایید شد (Configure-Ack).")
+                            } else if (code == 0x02) { // Server Configure-Ack
+                                sendBroadcastLog("پیکربندی LCP کلاینت توسط سرور تایید شد.")
+                            }
+                        } else if (pppProto == 0xC223) { // CHAP Auth
+                            if (code == 0x01 && len >= 13) { // Challenge
+                                val valSize = recvBuf[12].toInt() and 0xff
+                                if (len >= 13 + valSize) {
+                                    val chal = recvBuf.copyOfRange(13, 13 + valSize)
+                                    val chapResp = buildChapResponse(serverTunnelId, serverSessionId, id, currentUser, currentPass, chal)
+                                    socket.send(DatagramPacket(chapResp, chapResp.size, serverAddress, 1701))
+                                    sendBroadcastLog("پاسخ احراز هویت CHAP به میکروتیک ارسال شد...")
+                                }
+                            } else if (code == 0x03) { // Success
+                                authDone = true
+                                sendBroadcastLog("احراز هویت CHAP با موفقیت توسط سرور تایید شد.")
+                                break
+                            } else if (code == 0x04) { // Failure
+                                sendBroadcastError("احراز هویت سرور L2TP ناموفق بود: نام کاربری یا کلمه عبور نادرست است (CHAP Failure).")
+                                return
+                            }
+                        } else if (pppProto == 0xC023) { // PAP Auth
+                            if (code == 0x02) { // Ack
+                                authDone = true
+                                sendBroadcastLog("احراز هویت PAP با موفقیت تایید شد.")
+                                break
+                            } else if (code == 0x03) { // Nak
+                                sendBroadcastError("احراز هویت سرور L2TP ناموفق بود: نام کاربری یا کلمه عبور اشتباه است (PAP Nak).")
+                                return
+                            }
+                        }
+                    }
+                } catch (e: Exception) {}
+            }
+
+            // If not authenticated via CHAP Challenge, send PAP Request
+            if (!authDone && currentUser.isNotEmpty()) {
+                val papReq = buildPapAuthRequest(serverTunnelId, serverSessionId, currentUser, currentPass)
+                socket.send(DatagramPacket(papReq, papReq.size, serverAddress, 1701))
+                sendBroadcastLog("ارسال درخواست احراز هویت PAP برای کاربر ...")
+                try {
+                    socket.receive(recvPacket)
+                    val len = recvPacket.length
+                    if (len > 8) {
+                        val pppProto = ((recvBuf[6].toInt() and 0xff) shl 8) or (recvBuf[7].toInt() and 0xff)
+                        val code = recvBuf[8].toInt() and 0xff
+                        if (pppProto == 0xC023) {
+                            if (code == 0x03) {
+                                sendBroadcastError("احراز هویت سرور L2TP ناموفق بود: نام کاربری یا رمز عبور اشتباه است (PAP Nak).")
+                                return
+                            } else if (code == 0x02) {
+                                sendBroadcastLog("احراز هویت PAP تایید شد.")
+                            }
                         }
                     }
                 } catch (e: Exception) {}
             }
 
             // 7. Dynamic IP assignment via PPP IPCP (0x8021)
+            sendBroadcastLog("درخواست تخصیص آدرس آی‌پی (IPCP Configure-Request)... ")
             try {
                 val ipcpReq = buildIpcpRequest(serverTunnelId, serverSessionId, "0.0.0.0")
                 socket.send(DatagramPacket(ipcpReq, ipcpReq.size, serverAddress, 1701))
-                for (i in 0..3) {
-                    socket.receive(recvPacket)
-                    val len = recvPacket.length
-                    if (len > 8) {
-                        val pppProto = ((recvBuf[6].toInt() and 0xff) shl 8) or (recvBuf[7].toInt() and 0xff)
-                        if (pppProto == 0x8021) {
-                            val code = recvBuf[8].toInt() and 0xff
-                            val extracted = extractIpFromIpcp(recvBuf, len)
-                            if (extracted.isNotEmpty() && extracted != "0.0.0.0") {
-                                assignedClientIp = extracted
-                                // If server sent Configure-Nak (Code 3), send Configure-Request with the assigned IP!
-                                if (code == 0x03) {
-                                    val ipcpReq2 = buildIpcpRequest(serverTunnelId, serverSessionId, assignedClientIp)
-                                    socket.send(DatagramPacket(ipcpReq2, ipcpReq2.size, serverAddress, 1701))
+                for (i in 0..5) {
+                    try {
+                        socket.receive(recvPacket)
+                        val len = recvPacket.length
+                        if (len > 8) {
+                            val pppProto = ((recvBuf[6].toInt() and 0xff) shl 8) or (recvBuf[7].toInt() and 0xff)
+                            if (pppProto == 0x8021) {
+                                val code = recvBuf[8].toInt() and 0xff
+                                if (code == 0x01) { // Server Configure-Request (Server's gateway IP)
+                                    val ack = recvBuf.copyOf(len)
+                                    ack[8] = 0x02.toByte() // Code: Configure-Ack
+                                    socket.send(DatagramPacket(ack, len, serverAddress, 1701))
+                                } else if (code == 0x03) { // Server Configure-Nak (Giving real assigned IP)
+                                    val extracted = extractIpFromIpcp(recvBuf, len)
+                                    if (extracted.isNotEmpty() && extracted != "0.0.0.0") {
+                                        assignedClientIp = extracted
+                                        sendBroadcastLog("آدرس آی‌پی از استخر میکروتیک دریافت شد: ")
+                                        val ipcpReq2 = buildIpcpRequest(serverTunnelId, serverSessionId, assignedClientIp)
+                                        socket.send(DatagramPacket(ipcpReq2, ipcpReq2.size, serverAddress, 1701))
+                                    }
+                                } else if (code == 0x02) { // Configure-Ack
+                                    val extracted = extractIpFromIpcp(recvBuf, len)
+                                    if (extracted.isNotEmpty() && extracted != "0.0.0.0") {
+                                        assignedClientIp = extracted
+                                    }
+                                    if (assignedClientIp.isNotEmpty()) break
                                 }
-                                break
                             }
                         }
-                    }
+                    } catch (e: Exception) {}
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "IPCP negotiation exception: " + e.message)
@@ -340,7 +417,9 @@ class L2tpVpnService : VpnService(), Runnable {
 
             // Validate assigned IP: NEVER assign fake 172.x.x.x!
             if (assignedClientIp.isEmpty()) {
-                sendBroadcastError("عدم دریافت آدرس آی‌پی (IPCP) از سرور L2TP میکروتیک. لطفاً استخر آدرس (IP Pool) و اکانت کاربر در میکروتیک را بررسی فرمایید.")
+                sendBroadcastError("عدم دریافت آدرس آی‌پی (IPCP) از سرور L2TP میکروتیک. لطفاً در میکروتیک این دو مورد را بررسی فرمایید:
+۱. دستور: /interface l2tp-server server set use-ipsec=no authentication=pap,chap,mschap1,mschap2
+۲. تعریف local-address و remote-address یا IP Pool در /ppp profile")
                 return
             }
 
@@ -863,9 +942,25 @@ class L2tpVpnService : VpnService(), Runnable {
         return bb.array()
     }
 
-    private fun buildL2tpScccn(tunnelId: Int, ns: Int, nr: Int): ByteArray {
+    private fun buildL2tpScccn(tunnelId: Int, ns: Int, nr: Int, secret: String = "", challenge: ByteArray? = null): ByteArray {
         val avps = ArrayList<Byte>()
         addAvpShort(avps, 0, 3) // Message Type = 3 (SCCCN)
+        if (challenge != null && challenge.isNotEmpty() && secret.isNotEmpty()) {
+            try {
+                val md = MessageDigest.getInstance("MD5")
+                md.update(3.toByte()) // Message Type for SCCCN
+                md.update(secret.toByteArray(Charsets.UTF_8))
+                md.update(challenge)
+                val resp = md.digest()
+                val len = 6 + resp.size
+                avps.add(0x80.toByte()); avps.add(len.toByte())
+                avps.add(0.toByte()); avps.add(0.toByte())
+                avps.add(0.toByte()); avps.add(13.toByte()) // AVP 13: Challenge Response
+                for (b in resp) avps.add(b)
+            } catch (e: Exception) {
+                Log.w(TAG, "Challenge response error", e)
+            }
+        }
         val totalLen = 12 + avps.size
         val bb = ByteBuffer.allocate(totalLen)
         bb.put(0xC8.toByte()).put(0x02.toByte())
@@ -875,6 +970,41 @@ class L2tpVpnService : VpnService(), Runnable {
         bb.putShort(ns.toShort())
         bb.putShort(nr.toShort())
         for (b in avps) bb.put(b)
+        return bb.array()
+    }
+
+    private fun buildChapResponse(tunnelId: Int, sessionId: Int, chapId: Int, user: String, pass: String, challenge: ByteArray): ByteArray {
+        val md = MessageDigest.getInstance("MD5")
+        md.update(chapId.toByte())
+        md.update(pass.toByteArray(Charsets.UTF_8))
+        md.update(challenge)
+        val respVal = md.digest() // 16 bytes
+
+        val uBytes = user.toByteArray(Charsets.UTF_8)
+        val valSize = respVal.size
+        val pppLen = 4 + 1 + valSize + uBytes.size
+        val bb = ByteBuffer.allocate(8 + pppLen)
+
+        // L2TP Data Header
+        bb.put(0x00.toByte()).put(0x02.toByte())
+        bb.putShort(tunnelId.toShort())
+        bb.putShort(sessionId.toShort())
+
+        // PPP Protocol: CHAP (0xC223)
+        bb.put(0xC2.toByte()).put(0x23.toByte())
+
+        // Code 2 (Response), Identifier, Length
+        bb.put(0x02.toByte())
+        bb.put(chapId.toByte())
+        bb.putShort(pppLen.toShort())
+
+        // Value-Size & Value
+        bb.put(valSize.toByte())
+        bb.put(respVal)
+
+        // Name
+        bb.put(uBytes)
+
         return bb.array()
     }
 
@@ -1023,6 +1153,21 @@ class L2tpVpnService : VpnService(), Runnable {
         for (b in bytes) list.add(b)
     }
 
+    private fun parseL2tpMessageType(buf: ByteArray, len: Int): Int {
+        if (len < 18 || (buf[0].toInt() and 0x80) == 0) return -1
+        var idx = 12
+        while (idx + 6 <= len) {
+            val avpLen = ((buf[idx].toInt() and 0x03) shl 8) or (buf[idx + 1].toInt() and 0xff)
+            if (avpLen < 6 || idx + avpLen > len) break
+            val attrType = ((buf[idx + 4].toInt() and 0xff) shl 8) or (buf[idx + 5].toInt() and 0xff)
+            if (attrType == 0 && avpLen >= 8) {
+                return ((buf[idx + 6].toInt() and 0xff) shl 8) or (buf[idx + 7].toInt() and 0xff)
+            }
+            idx += avpLen
+        }
+        return -1
+    }
+
     private fun parseAssignedTunnelId(buf: ByteArray, len: Int): Int {
         var idx = 12
         while (idx + 6 <= len) {
@@ -1034,7 +1179,7 @@ class L2tpVpnService : VpnService(), Runnable {
             }
             idx += avpLen
         }
-        return 1
+        return 0
     }
 
     private fun parseAssignedSessionId(buf: ByteArray, len: Int): Int {
@@ -1048,7 +1193,53 @@ class L2tpVpnService : VpnService(), Runnable {
             }
             idx += avpLen
         }
-        return 1
+        return 0
+    }
+
+    private fun parseChallenge(buf: ByteArray, len: Int): ByteArray? {
+        var idx = 12
+        while (idx + 6 <= len) {
+            val avpLen = ((buf[idx].toInt() and 0x03) shl 8) or (buf[idx + 1].toInt() and 0xff)
+            if (avpLen < 6 || idx + avpLen > len) break
+            val attrType = ((buf[idx + 4].toInt() and 0xff) shl 8) or (buf[idx + 5].toInt() and 0xff)
+            if (attrType == 11 && avpLen > 6) {
+                return buf.copyOfRange(idx + 6, idx + avpLen)
+            }
+            idx += avpLen
+        }
+        return null
+    }
+
+    private fun parseStopCcnError(buf: ByteArray, len: Int): String {
+        var idx = 12
+        var resCode = -1
+        var errCode = -1
+        var errMsg = ""
+        while (idx + 6 <= len) {
+            val avpLen = ((buf[idx].toInt() and 0x03) shl 8) or (buf[idx + 1].toInt() and 0xff)
+            if (avpLen < 6 || idx + avpLen > len) break
+            val attrType = ((buf[idx + 4].toInt() and 0xff) shl 8) or (buf[idx + 5].toInt() and 0xff)
+            if (attrType == 1 && avpLen >= 8) {
+                resCode = ((buf[idx + 6].toInt() and 0xff) shl 8) or (buf[idx + 7].toInt() and 0xff)
+                if (avpLen >= 10) {
+                    errCode = ((buf[idx + 8].toInt() and 0xff) shl 8) or (buf[idx + 9].toInt() and 0xff)
+                }
+                if (avpLen > 10) {
+                    errMsg = String(buf, idx + 10, avpLen - 10, Charsets.UTF_8)
+                }
+            }
+            idx += avpLen
+        }
+        val desc = when (resCode) {
+            1 -> "درخواست پاکسازی اتصال (General clear)"
+            2 -> "خطای عمومی سرور میکروتیک (کد خطا: )"
+            3 -> "کانال اتصال از قبل وجود دارد"
+            4 -> "درخواست غیرمجاز (احتمالاً use-ipsec بر روی میکروتیک فعال است یا اکانت یافت نشد)"
+            5 -> "نسخه پروتکل L2TP پشتیبانی نمی‌شود"
+            6 -> "سرور در حال خاموش شدن است"
+            else -> "کد نتیجه سرور: "
+        }
+        return if (errMsg.isNotBlank()) " ()" else desc
     }
 
     private fun extractIpFromIpcp(buf: ByteArray, len: Int): String {
@@ -1194,6 +1385,15 @@ class L2tpVpnService : VpnService(), Runnable {
     // ==========================================
     // STATUS & BROADCAST NOTIFIERS
     // ==========================================
+    private fun sendBroadcastLog(message: String) {
+        try {
+            val intent = Intent(ACTION_VPN_UPDATE).apply {
+                putExtra("MESSAGE", message)
+            }
+            sendBroadcast(intent)
+        } catch (e: Exception) {}
+    }
+
     private fun sendBroadcastStatus(status: String, assignedIp: String = "") {
         try {
             val intent = Intent(ACTION_VPN_UPDATE).apply {

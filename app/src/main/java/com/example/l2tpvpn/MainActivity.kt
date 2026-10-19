@@ -41,22 +41,18 @@ class MainActivity : AppCompatActivity() {
 
     private val vpnReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            val status = intent?.getStringExtra("STATUS") ?: "disconnected"
-            val bytesIn = intent?.getLongExtra("BYTES_IN", 0L) ?: 0L
-            val bytesOut = intent?.getLongExtra("BYTES_OUT", 0L) ?: 0L
-            val speedIn = intent?.getLongExtra("SPEED_IN", 0L) ?: 0L
-            val speedOut = intent?.getLongExtra("SPEED_OUT", 0L) ?: 0L
-            val assignedIp = intent?.getStringExtra("ASSIGNED_IP") ?: ""
+            val status = intent?.getStringExtra("STATUS")
+            val message = intent?.getStringExtra("MESSAGE") ?: ""
             val error = intent?.getStringExtra("ERROR") ?: ""
-
             val json = JSONObject().apply {
-                put("status", status)
-                put("bytesIn", bytesIn)
-                put("bytesOut", bytesOut)
-                put("speedIn", speedIn)
-                put("speedOut", speedOut)
-                put("assignedIp", assignedIp)
-                put("error", error)
+                if (status != null) put("status", status)
+                if (message.isNotEmpty()) put("message", message)
+                if (error.isNotEmpty()) put("error", error)
+                if (intent?.hasExtra("BYTES_IN") == true) put("bytesIn", intent.getLongExtra("BYTES_IN", 0L))
+                if (intent?.hasExtra("BYTES_OUT") == true) put("bytesOut", intent.getLongExtra("BYTES_OUT", 0L))
+                if (intent?.hasExtra("SPEED_IN") == true) put("speedIn", intent.getLongExtra("SPEED_IN", 0L))
+                if (intent?.hasExtra("SPEED_OUT") == true) put("speedOut", intent.getLongExtra("SPEED_OUT", 0L))
+                if (intent?.hasExtra("ASSIGNED_IP") == true) put("assignedIp", intent.getStringExtra("ASSIGNED_IP"))
             }
             runOnUiThread {
                 try {
